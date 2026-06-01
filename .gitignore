@@ -20,6 +20,7 @@ runs/
 *.pt
 *.bin
 *.safetensors
+*.gguf
 
 # Materialized source corpora (arrow shards) — rebuild via
 # `python -m nanobeard.dataset_pipeline.sources --source <name>`.
