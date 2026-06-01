@@ -87,10 +87,57 @@ def make_config_gpu() -> Config:
     )
 
 
+def make_config_sft() -> Config:
+    """Chat SFT on top of the pretrained 360M-full Frigate (A100 / RTX 4090).
+
+    Loads the pretraining ckpt.pt from pretrained_ckpt_repo; block_size MUST
+    equal the pretraining block_size (512). SFT data is built on the fly
+    (dolly-pirate + empathetic_dialogues); only the tokenizer (pirate_bpe.json)
+    is needed locally, and its sha256 must match the pretrained ckpt.
+    """
+    return Config(
+        run_name="frigate-360m-full-sft",
+        model_name="frigate",
+        data_dir=DATA_DIR,  # for pirate_bpe.json (tokenizer + sha verify)
+        run_dir="runs/frigate-360m-full-sft",
+        hf_model_repo="younissk/nanoBeard-frigate-360M-full",
+        # hf_ckpt_repo intentionally None: save_sft_checkpoint pushes a multi-GB
+        # ckpt synchronously inside the loop on every val improvement, which on a
+        # flaky uplink stalls the whole run. SFT is short — checkpoint locally and
+        # upload the final sft_ckpt.pt once, out of band, to
+        # younissk/frigate-360M-full-sft-ckpts (public).
+        hf_ckpt_repo=None,
+        # SFT loads the pretraining ckpt.pt from here (not the model repo).
+        pretrained_ckpt_repo="younissk/frigate-360M-full-ckpts",
+        hf_private=False,
+        dropout=0.0,
+        device="cuda",
+        dtype="bfloat16",
+        compile=False,  # short run; compile warmup not worth it
+        # SFT optimizer: low LR, no weight decay (AdamW, the Config default).
+        learning_rate=2e-5,
+        min_lr=2e-6,
+        weight_decay=0.0,
+        warmup_iters=100,
+        lr_decay_iters=3000,
+        max_iters=3000,
+        # 360M is ~2.85x the 125M; batch 8 keeps it comfortably within a 24GB
+        # 4090 and well within an A100 40GB.
+        batch_size=8,
+        eval_interval=200,
+        eval_iters=50,
+        log_interval=20,
+        resume=False,
+        wandb_project="pirate-llm",
+        **ARCH,
+    )
+
+
 def make_config() -> Config:
-    """Variant dispatcher. CONFIG_VARIANT=smoke|gpu (default: smoke)."""
+    """Variant dispatcher. CONFIG_VARIANT=smoke|gpu|sft (default: smoke)."""
     variant = os.environ.get("CONFIG_VARIANT", "smoke")
     return {
         "smoke": make_config_smoke,
         "gpu": make_config_gpu,
+        "sft": make_config_sft,
     }[variant]()
