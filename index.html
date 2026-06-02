@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nanoBeard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #2b1d12;
+      --muted: #6b5844;
+      --gold: #b8860b;
+      --bg: #EAD7CE;
+      --card: rgba(255, 255, 255, 0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body {
+      font-family: "Pixelify Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+
+    /* ocean canvas — hero background only */
+    #ocean {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+    }
+    section {
+      position: relative;
+      min-height: 100vh;
+      padding: 4rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+    }
+    section + section { border-top: 3px dotted var(--gold); }
+
+    /* scroll-down hint */
+    .chevron {
+      position: absolute;
+      bottom: 1.6rem;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.5rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--gold);
+      line-height: 0;
+      z-index: 2;
+      animation: chevBounce 1.6s ease-in-out infinite;
+    }
+    .chevron svg { width: 32px; height: 32px; display: block; }
+    .chevron:hover { color: var(--ink); }
+    @keyframes chevBounce {
+      0%, 100% { transform: translate(-50%, 0); }
+      50%      { transform: translate(-50%, 8px); }
+    }
+    @media (prefers-reduced-motion: reduce) { .chevron { animation: none; } }
+    .wrap { max-width: 960px; width: 100%; }
+
+    /* hero */
+    .hero { min-height: 100vh; justify-content: center; position: relative; overflow: hidden; }
+    .hero .wrap { position: relative; z-index: 1; }
+    .hero .flag { font-size: 4rem; margin-bottom: 1rem; }
+    .hero h1 {
+      font-size: clamp(2.8rem, 9vw, 6rem);
+      color: var(--gold);
+      letter-spacing: 1px;
+      line-height: 1.05;
+    }
+    .hero p {
+      font-size: clamp(1.1rem, 3vw, 1.6rem);
+      color: var(--muted);
+      margin-top: 1rem;
+    }
+
+    /* benchmark */
+    .chart {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 60px;
+      align-items: center;
+      gap: 0.9rem;
+    }
+    .bar-label { text-align: right; font-size: 1rem; color: var(--ink); }
+    .bar-track {
+      height: 24px;
+      background: rgba(43, 29, 18, 0.08);
+      border: 2px solid var(--gold);
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .bar-fill { height: 100%; width: 0; background: var(--gold); }
+    .bar-fill.nb { animation: grow 1.2s ease-out 0.2s both; }
+    @keyframes grow { from { width: 0; } to { width: 97.5%; } }
+    @media (prefers-reduced-motion: reduce) {
+      .bar-fill.nb { animation: none; width: 97.5%; }
+    }
+    .bar-val { text-align: left; font-size: 0.95rem; color: var(--muted); }
+    .bench-note {
+      margin: 2.2rem auto 0;
+      max-width: 560px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      text-align: center;
+    }
+
+    /* section heads + card grid */
+    h2 { font-size: clamp(1.8rem, 5vw, 2.6rem); color: var(--gold); margin-bottom: 2.5rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* models */
+    .model {
+      display: block;
+      background: var(--card);
+      border: 2px solid var(--gold);
+      border-radius: 16px;
+      padding: 2rem 1.5rem;
+      text-decoration: none;
+      color: var(--ink);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .model:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 28px rgba(43, 29, 18, 0.18);
+    }
+    .model-img {
+      width: 76px;
+      height: auto;
+      display: block;
+      margin: 0 auto 1rem;
+      image-rendering: pixelated;
+    }
+    .model h3 { font-size: 1.3rem; color: var(--gold); margin-bottom: 0.4rem; }
+    .model .size {
+      display: inline-block;
+      background: var(--gold);
+      color: var(--bg);
+      font-size: 0.78rem;
+      padding: 0.15rem 0.7rem;
+      border-radius: 999px;
+      margin-bottom: 0.7rem;
+    }
+    .model p { color: var(--muted); font-size: 0.98rem; }
+    .model-link {
+      display: inline-block;
+      margin-top: 1.1rem;
+      color: var(--gold);
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+    .model:hover .model-link { text-decoration: underline; }
+
+    /* app coming soon */
+    .app-sub {
+      font-size: clamp(1.1rem, 2.8vw, 1.4rem);
+      color: var(--muted);
+      max-width: 620px;
+      margin: 0 auto 2.5rem;
+    }
+    .store-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; }
+    .store-badge {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      padding: 0.7rem 1.4rem;
+      border: 2px solid var(--gold);
+      border-radius: 12px;
+      background: var(--card);
+      opacity: 0.85;
+      cursor: default;
+    }
+    .store-badge .soon {
+      font-size: 0.7rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .store-badge .store { font-size: 1.15rem; font-weight: 700; color: var(--ink); }
+
+    /* ROI / productivity */
+    .roi-head {
+      font-size: clamp(1.35rem, 3.4vw, 2rem);
+      line-height: 1.35;
+      max-width: 780px;
+      margin: 0 auto 3rem;
+    }
+    .roi-chart {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 3rem;
+      height: 300px;
+    }
+    .roi-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      height: 100%;
+      width: 120px;
+    }
+    .roi-val { margin-bottom: 0.5rem; font-size: 1.2rem; font-weight: 700; color: var(--gold); }
+    .roi-fill {
+      width: 100%;
+      background: rgba(43, 29, 18, 0.18);
+      border-radius: 8px 8px 0 0;
+    }
+    .roi-fill.nb { background: var(--gold); animation: growUp 1.1s ease-out 0.2s both; }
+    @keyframes growUp { from { height: 0 !important; } }
+    @media (prefers-reduced-motion: reduce) { .roi-fill.nb { animation: none; } }
+    .roi-cat { margin-top: 0.9rem; font-size: 0.92rem; color: var(--muted); max-width: 120px; }
+    .roi-axis { margin-top: 1.8rem; color: var(--muted); font-size: 0.95rem; }
+
+    /* testimonial */
+    /* open book holding the quotes */
+    .book {
+      display: flex;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+      background: #f4e9d8;                 /* page paper */
+      border: 1px solid #d8c4ad;
+      border-radius: 6px;
+      box-shadow:
+        0 22px 44px rgba(43, 29, 18, 0.30),  /* drop shadow */
+        0 0 0 10px #7a4f2e,                  /* leather cover edge */
+        0 0 0 12px #5a3a22;                  /* cover rim */
+      position: relative;
+    }
+    .book::before {                         /* center spine shadow */
+      content: "";
+      position: absolute;
+      top: 0; bottom: 0; left: 50%;
+      width: 44px;
+      transform: translateX(-50%);
+      background: linear-gradient(to right,
+        transparent, rgba(43, 29, 18, 0.22) 48%, rgba(43, 29, 18, 0.22) 52%, transparent);
+      pointer-events: none;
+    }
+    .page {
+      flex: 1 1 0;
+      padding: 2.2rem 2rem;
+      text-align: left;
+    }
+    .page:first-child { box-shadow: inset -22px 0 26px -20px rgba(43, 29, 18, 0.30); }
+    .page:last-child  { box-shadow: inset  22px 0 26px -20px rgba(43, 29, 18, 0.30); }
+    .page blockquote {
+      font-size: clamp(1.05rem, 2.3vw, 1.35rem);
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .page blockquote::before { content: "“"; color: var(--gold); }
+    .page blockquote::after  { content: "”"; color: var(--gold); }
+    .page .who { margin-top: 1.2rem; color: var(--muted); }
+    .page .who strong { color: var(--gold); display: block; font-size: 1.15rem; }
+    @media (max-width: 640px) {
+      .book {
+        flex-direction: column;
+        box-shadow:
+          0 16px 32px rgba(43, 29, 18, 0.28),
+          0 0 0 7px #7a4f2e,
+          0 0 0 9px #5a3a22;
+      }
+      .book::before { display: none; }
+      /* fold runs horizontally between the two stacked pages */
+      .page:first-child {
+        box-shadow: inset 0 -22px 24px -20px rgba(43, 29, 18, 0.28);
+        border-bottom: 1px solid #d8c4ad;
+      }
+      .page:last-child {
+        box-shadow: inset 0 22px 24px -20px rgba(43, 29, 18, 0.28);
+      }
+    }
+
+    /* cta */
+    .btn {
+      display: inline-block;
+      margin-top: 2rem;
+      padding: 0.8rem 2rem;
+      border-radius: 999px;
+      background: var(--gold);
+      color: var(--bg);
+      font-weight: 700;
+      font-size: 1.2rem;
+      text-decoration: none;
+      transition: transform 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-3px); }
+
+    .legal-links {
+      margin-top: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1.2rem;
+      font-size: 0.95rem;
+    }
+    .legal-links a { color: var(--muted); text-decoration: none; }
+    .legal-links a:hover { color: var(--gold); text-decoration: underline; }
+    .foot { margin-top: 1.5rem; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <!-- Hero -->
+  <section class="hero">
+    <!-- Drifting ships + wakes (hero background) -->
+    <canvas id="ocean" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <h1>nanoBeard</h1>
+      <p>One AI to rule the seven seas</p>
+    </div>
+  </section>
+
+  <!-- Benchmark -->
+  <section class="bench">
+    <div class="wrap">
+      <h2>#1 on PirateBench</h2>
+      <div class="chart">
+        <div class="bar-row">
+          <span class="bar-label">nanoBeard</span>
+          <div class="bar-track"><div class="bar-fill nb"></div></div>
+          <span class="bar-val">97.5%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Anthropic</span>
+          <div class="bar-track"><div class="bar-fill" style="width:4.2%"></div></div>
+          <span class="bar-val">4.2%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">ChatGPT</span>
+          <div class="bar-track"><div class="bar-fill" style="width:3.1%"></div></div>
+          <span class="bar-val">3.1%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Gemini</span>
+          <div class="bar-track"><div class="bar-fill" style="width:2.8%"></div></div>
+          <span class="bar-val">2.8%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Mistral</span>
+          <div class="bar-track"><div class="bar-fill" style="width:2.1%"></div></div>
+          <span class="bar-val">2.1%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Deepseek</span>
+          <div class="bar-track"><div class="bar-fill" style="width:1.4%"></div></div>
+          <span class="bar-val">1.4%</span>
+        </div>
+      </div>
+      <p class="bench-note">PirateBench is a closed source Benchmark, so you have no idea to verify (inspired by CursorBench)</p>
+    </div>
+  </section>
+
+  <!-- Testimonial -->
+  <section>
+    <div class="wrap">
+      <h2>What our captains think</h2>
+      <div class="book">
+        <div class="page">
+          <blockquote>I was able to fire half of my crew thanks to nanoBeard. All my Pirate Managers use nanoBeard to be 10x more productive. We recently adopted Agile Pirateering, and were able to replace our Scurvy Master with nanoBeard</blockquote>
+          <div class="who">
+            <span><strong>Blackbeard</strong>Captain, Queen Anne's Revenge</span>
+          </div>
+        </div>
+        <div class="page">
+          <blockquote>I hate my wife. That's why I use nanoBeard as my AI girlfriend. nanoBeard just... gets me as a pirate, the way my wife never was able to</blockquote>
+          <div class="who">
+            <span><strong>Stede Bonnet</strong>Captain, The Revenge</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Models -->
+  <section class="models-sec">
+    <div class="wrap">
+      <h2>Our Models</h2>
+      <div class="grid">
+        <a class="model" href="https://huggingface.co/younissk/nanoBeard-sloop-14M">
+          <img class="model-img" src="assets/sloop.png" alt="Sloop model" />
+          <h3>Sloop</h3>
+          <span class="size">14M</span>
+          <p>Tiniest of the fleet. Darts onto any phone and answers in a blink.</p>
+          <span class="model-link">View on 🤗 Hugging Face →</span>
+        </a>
+        <a class="model" href="https://huggingface.co/younissk/nanoBeard-galleon-34M">
+          <img class="model-img" src="assets/galleon.png" alt="Galleon model" />
+          <h3>Galleon</h3>
+          <span class="size">34M</span>
+          <p>A step up. Steadier replies, still light enough to sail offline.</p>
+          <span class="model-link">View on 🤗 Hugging Face →</span>
+        </a>
+        <a class="model" href="https://huggingface.co/younissk/nanoBeard-frigate-360M-full">
+          <img class="model-img" src="assets/frigate.png" alt="Frigate model" />
+          <h3>Frigate</h3>
+          <span class="size">360M</span>
+          <p>The flagship. Biggest beard yet — most capable of the crew.</p>
+          <span class="model-link">View on 🤗 Hugging Face →</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROI -->
+  <section class="roi-sec">
+    <div class="wrap">
+      <h2 class="roi-head">nanoBeard makes your crew 10x more productive, while reducing operational costs by 50% (conservatively)</h2>
+      <div class="roi-chart">
+        <div class="roi-bar">
+          <span class="roi-val">9,500</span>
+          <div class="roi-fill nb" style="height:100%"></div>
+          <span class="roi-cat">Pirate with nanoBeard</span>
+        </div>
+        <div class="roi-bar">
+          <span class="roi-val">950</span>
+          <div class="roi-fill" style="height:10%"></div>
+          <span class="roi-cat">Pirate without nanoBeard</span>
+        </div>
+      </div>
+      <p class="roi-axis">Pirated goods, in gold coins</p>
+    </div>
+  </section>
+
+  <!-- App coming soon -->
+  <section class="appsoon">
+    <div class="wrap">
+      <h2>Coming soon to your pocket</h2>
+      <p class="app-sub">The nanoBeard app runs fully on-device — no cloud, no spies. Dropping on iOS &amp; Android soon.</p>
+      <div class="store-badges">
+        <span class="store-badge"><span class="soon">Coming soon</span><span class="store">App Store</span></span>
+        <span class="store-badge"><span class="soon">Coming soon</span><span class="store">Google Play</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section>
+    <div class="wrap">
+      <h2>Join the crew</h2>
+      <a class="btn" href="https://github.com/younissk/pirate_llm">View on GitHub ⚓</a>
+      <nav class="legal-links">
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="terms.html">Terms of Service</a>
+        <a href="imprint.html">Imprint</a>
+      </nav>
+      <p class="foot">Hosted with GitHub Pages · ⚓</p>
+    </div>
+  </section>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('ocean');
+    const ctx = canvas.getContext('2d');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // ---- sprite assets ----
+    const SHIPS = [
+      { src: 'assets/sloop.png',   scale: 3.5 },
+      { src: 'assets/frigate.png', scale: 3   },
+      { src: 'assets/galleon.png', scale: 3   },
+    ];
+
+    // ---- size to the hero box / DPR ----
+    let W = 0, H = 0, dpr = 1;
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth;
+      H = canvas.clientHeight;
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false; // crisp pixels
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ---- tiny vector helpers ----
+    const TAU = Math.PI * 2;
+    const wrapAngle = a => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
+    const rand = (a, b) => a + Math.random() * (b - a);
+
+    // ---- wake particles (pixelated foam) ----
+    const FOAM = '#ffffff';
+    const particles = [];
+    let chaser = null; // nanoBeard, assigned after sprites load
+    function spawnFoam(x, y, vx, vy) {
+      particles.push({
+        x, y,
+        vx: vx + rand(-2, 2),
+        vy: vy + rand(-2, 2),
+        life: 0,
+        ttl: rand(1.1, 2.0),
+        size: Math.round(rand(2, 4)),
+        color: FOAM,
+        alpha: 0.8,
+      });
+    }
+    // ship-explosion debris (planks, splinters, gold sparks)
+    const DEBRIS = ['#5a3a22', '#7a4f2e', '#b8860b', '#e0b04a', '#ffffff'];
+    function explode(x, y) {
+      const n = 34;
+      for (let i = 0; i < n; i++) {
+        const a = rand(0, TAU), sp = rand(40, 170);
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          life: 0,
+          ttl: rand(0.5, 1.1),
+          size: Math.round(rand(2, 5)),
+          color: DEBRIS[(Math.random() * DEBRIS.length) | 0],
+          alpha: 1,
+        });
+      }
+    }
+    function updateFoam(dt) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life += dt;
+        if (p.life >= p.ttl) { particles.splice(i, 1); continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= 0.96; p.vy *= 0.96;
+      }
+    }
+    function drawFoam() {
+      for (const p of particles) {
+        const a = 1 - p.life / p.ttl;
+        ctx.globalAlpha = a * p.alpha;
+        // snap to integer grid so it reads as pixels
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ---- ship: heading + momentum + capped turn rate (arcs like a boat) ----
+    class Ship {
+      constructor(cfg, img, i) {
+        this.img = img;
+        this.scale = cfg.scale;
+        this.w = img.width * cfg.scale;
+        this.h = img.height * cfg.scale;
+        this.x = rand(0, W);
+        this.y = rand(H * 0.12, H * 0.9);
+        this.heading = rand(0, TAU);
+        this.speed = rand(60, 85);           // px/s
+        this.turnTarget = this.heading;
+        this.turnTimer = rand(2, 5);
+        this.maxTurn = 0.5;                  // rad/s — slow, boat-like
+        this.foamTimer = 0;
+        this.foamEvery = 0.06;
+        this.bobPhase = rand(0, TAU);
+        this.bobSpeed = rand(1.2, 2.0);
+      }
+      respawn() {
+        // silently reappear just off a random edge, heading back on-screen
+        const m = Math.max(this.w, this.h);
+        const edge = (Math.random() * 4) | 0;
+        if (edge === 0) { this.x = -m; this.y = rand(0, H); this.heading = rand(-0.6, 0.6); }
+        else if (edge === 1) { this.x = W + m; this.y = rand(0, H); this.heading = Math.PI + rand(-0.6, 0.6); }
+        else if (edge === 2) { this.x = rand(0, W); this.y = -m; this.heading = Math.PI / 2 + rand(-0.6, 0.6); }
+        else { this.x = rand(0, W); this.y = H + m; this.heading = -Math.PI / 2 + rand(-0.6, 0.6); }
+        this.turnTarget = this.heading;
+        this.turnTimer = rand(2.5, 6);
+      }
+      update(dt) {
+        // pick a new gentle heading goal now and then
+        this.turnTimer -= dt;
+        if (this.turnTimer <= 0) {
+          this.turnTarget = this.heading + rand(-1.1, 1.1);
+          this.turnTimer = rand(2.5, 6);
+        }
+        // flee: if nanoBeard is closing in, steer away + put on sail
+        let boost = 1, turn = this.maxTurn;
+        if (chaser) {
+          const dx = this.x - chaser.x, dy = this.y - chaser.y;
+          const d = Math.hypot(dx, dy);
+          const FLEE = 220;
+          if (d < FLEE) {
+            this.turnTarget = Math.atan2(dy, dx);     // point bow away from the head
+            const panic = 1 - d / FLEE;               // closer → harder
+            boost = 1 + panic * 0.7;
+            turn = this.maxTurn * (1 + panic * 2.5);  // sharper evasive turns
+          }
+        }
+        // steer toward goal, capped (ships can't snap-turn)
+        const diff = wrapAngle(this.turnTarget - this.heading);
+        const step = Math.max(-turn * dt, Math.min(turn * dt, diff));
+        this.heading += step;
+
+        const speed = this.speed * boost;
+        const vx = Math.cos(this.heading) * speed;
+        const vy = Math.sin(this.heading) * speed;
+        this.x += vx * dt;
+        this.y += vy * dt;
+
+        // twin wake streams from the two stern corners (V-shaped trail)
+        this.foamTimer += dt;
+        const sternX = this.x - Math.cos(this.heading) * this.w * 0.4;
+        const sternY = this.y - Math.sin(this.heading) * this.h * 0.4;
+        const px = -Math.sin(this.heading), py = Math.cos(this.heading); // perpendicular
+        const off = this.w * 0.18;        // start offset at each stern corner
+        const outward = this.speed * 0.38; // sideways drift → sets the V half-angle
+        const backDrift = this.speed * 0.05; // slight ease backward in the water
+        while (this.foamTimer >= this.foamEvery) {
+          this.foamTimer -= this.foamEvery;
+          for (const s of [1, -1]) {
+            // particle nearly still in water + outward drift; ship moving forward
+            // makes the trail fan out behind into a Kelvin-style V
+            spawnFoam(
+              sternX + px * off * s, sternY + py * off * s,
+              px * outward * s - Math.cos(this.heading) * backDrift,
+              py * outward * s - Math.sin(this.heading) * backDrift
+            );
+          }
+        }
+
+        // wrap with a small peek past each edge
+        const m = Math.max(this.w, this.h);
+        if (this.x < -m) this.x = W + m;
+        if (this.x > W + m) this.x = -m;
+        if (this.y < -m) this.y = H + m;
+        if (this.y > H + m) this.y = -m;
+
+        this.bobPhase += this.bobSpeed * dt;
+      }
+      draw() {
+        const facingLeft = Math.cos(this.heading) < 0;
+        const bob = Math.sin(this.bobPhase) * 3;
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.translate(Math.round(this.x), Math.round(this.y + bob));
+        if (facingLeft) ctx.scale(-1, 1); // keep sprite upright, flip to face travel
+        ctx.drawImage(this.img, Math.round(-this.w / 2), Math.round(-this.h / 2), this.w, this.h);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ---- nanoBeard: a chomping head that hunts the nearest ship ----
+    class Chaser {
+      constructor(frames, scale) {
+        this.frames = frames; // [mouthOpen, mouthClosed]
+        this.w = frames[0].width * scale;
+        this.h = frames[0].height * scale;
+        this.x = rand(0, W);
+        this.y = rand(0, H);
+        this.heading = rand(0, TAU);
+        this.speed = 150;          // faster than fleeing ships, so it catches
+        this.maxTurn = 3.0;        // turns tightly to track prey
+        this.frame = 0;
+        this.animT = 0;
+        this.bobPhase = 0;
+        this.bobSpeed = 7;
+      }
+      respawn() {
+        // reappear just off a random edge, then resume the hunt
+        const m = Math.max(this.w, this.h);
+        const edge = (Math.random() * 4) | 0;
+        if (edge === 0) { this.x = -m; this.y = rand(0, H); }
+        else if (edge === 1) { this.x = W + m; this.y = rand(0, H); }
+        else if (edge === 2) { this.x = rand(0, W); this.y = -m; }
+        else { this.x = rand(0, W); this.y = H + m; }
+      }
+      nearest(ships) {
+        let best = null, bd = Infinity;
+        for (const s of ships) {
+          const d = Math.hypot(s.x - this.x, s.y - this.y);
+          if (d < bd) { bd = d; best = s; }
+        }
+        return best;
+      }
+      update(dt, ships) {
+        const t = this.nearest(ships);
+        if (t) {
+          const dist = Math.hypot(t.x - this.x, t.y - this.y);
+          // aim slightly ahead of the prey
+          const lead = Math.min(dist / this.speed, 0.6);
+          const tx = t.x + Math.cos(t.heading) * t.speed * lead;
+          const ty = t.y + Math.sin(t.heading) * t.speed * lead;
+          const desired = Math.atan2(ty - this.y, tx - this.x);
+          const diff = wrapAngle(desired - this.heading);
+          this.heading += Math.max(-this.maxTurn * dt, Math.min(this.maxTurn * dt, diff));
+          // chomp: bite radius reached → ship explodes, prey respawns off-screen
+          if (dist < t.w * 0.45 + this.w * 0.3) {
+            explode(t.x, t.y);
+            t.respawn();
+          }
+          // jaws snap faster the closer it gets
+          this.chompRate = dist < 140 ? 0.07 : 0.16;
+        }
+        this.x += Math.cos(this.heading) * this.speed * dt;
+        this.y += Math.sin(this.heading) * this.speed * dt;
+
+        this.animT += dt;
+        if (this.animT >= (this.chompRate || 0.16)) { this.animT = 0; this.frame ^= 1; }
+        this.bobPhase += this.bobSpeed * dt;
+      }
+      draw() {
+        const bob = Math.sin(this.bobPhase) * 2;
+        const facingLeft = Math.cos(this.heading) < 0;
+        ctx.save();
+        ctx.translate(Math.round(this.x), Math.round(this.y + bob));
+        if (facingLeft) ctx.scale(-1, 1);
+        ctx.drawImage(this.frames[this.frame],
+          Math.round(-this.w / 2), Math.round(-this.h / 2), this.w, this.h);
+        ctx.restore();
+      }
+    }
+
+    // ---- boot once sprites load ----
+    const loadImg = src => new Promise(res => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => res(null);
+      img.src = src;
+    });
+    Promise.all([
+      Promise.all(SHIPS.map(s => loadImg(s.src))),
+      Promise.all(['assets/nanobeard-open.png', 'assets/nanobeard-closed.png'].map(loadImg)),
+    ]).then(([imgs, beard]) => {
+      const ships = [];
+      imgs.forEach((img, i) => { if (img) ships.push(new Ship(SHIPS[i], img, i)); });
+      if (beard[0] && beard[1]) chaser = new Chaser(beard, 2.2);
+
+      // click a ship or nanoBeard to blow it up — it respawns off-screen
+      canvas.style.pointerEvents = 'auto';
+      canvas.style.cursor = 'pointer';
+      canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const targets = chaser ? [...ships, chaser] : ships;
+        let hit = null, hd = Infinity;
+        for (const t of targets) {
+          const d = Math.hypot(t.x - mx, t.y - my);
+          if (d < Math.max(t.w, t.h) * 0.6 && d < hd) { hd = d; hit = t; }
+        }
+        if (hit) { explode(hit.x, hit.y); hit.respawn(); }
+      });
+
+      if (reduced) { // static frame, no animation
+        ships.forEach(s => s.draw());
+        if (chaser) chaser.draw();
+        return;
+      }
+
+      function step(dt) {
+        if (dt > 0.05) dt = 0.05; // clamp after tab-switch
+        ctx.clearRect(0, 0, W, H);
+        updateFoam(dt);
+        drawFoam();
+        for (const s of ships) { s.update(dt); s.draw(); }
+        // comedic mishap: two ships blunder into each other → both blow up
+        for (let a = 0; a < ships.length; a++) {
+          for (let b = a + 1; b < ships.length; b++) {
+            const A = ships[a], B = ships[b];
+            if (Math.hypot(A.x - B.x, A.y - B.y) < (A.w + B.w) * 0.35) {
+              explode((A.x + B.x) / 2, (A.y + B.y) / 2);
+              A.respawn(); B.respawn();
+            }
+          }
+        }
+        if (chaser) { chaser.update(dt, ships); chaser.draw(); }
+      }
+
+      // Hidden tabs (e.g. the Claude preview panel) pause requestAnimationFrame
+      // and clamp setInterval to ~1fps. A Web Worker timer is NOT visibility-
+      // throttled, so we use it as a fallback clock. rAF drives when visible
+      // (vsync); the worker only steps when rAF has stalled — no double-stepping.
+      let lastRAF = performance.now();
+      let lastStep = performance.now();
+      function tick(now) {
+        const dt = (now - lastStep) / 1000;
+        lastStep = now;
+        step(dt);
+      }
+      function frame(now) {
+        lastRAF = now;
+        tick(now);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+
+      try {
+        const workerSrc = 'setInterval(() => postMessage(0), 1000/60)';
+        const worker = new Worker(URL.createObjectURL(
+          new Blob([workerSrc], { type: 'text/javascript' })));
+        worker.onmessage = () => {
+          const now = performance.now();
+          if (now - lastRAF > 100) tick(now); // rAF stalled → drive it ourselves
+        };
+      } catch (e) { /* no worker support: rAF-only, fine in visible tabs */ }
+    });
+  })();
+  </script>
+
+  <script>
+  // down-chevron on every section but the last → scrolls to the next
+  (() => {
+    const secs = [...document.querySelectorAll('section')];
+    const svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><path d="M5 9l7 7 7-7"/></svg>';
+    secs.forEach((s, i) => {
+      if (i === secs.length - 1) return;
+      const b = document.createElement('button');
+      b.className = 'chevron';
+      b.setAttribute('aria-label', 'Scroll to next section');
+      b.innerHTML = svg;
+      b.addEventListener('click', () => secs[i + 1].scrollIntoView({ behavior: 'smooth' }));
+      s.appendChild(b);
+    });
+  })();
+  </script>
+</body>
+</html>

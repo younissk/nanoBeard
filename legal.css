@@ -1,0 +1,71 @@
+:root {
+  --ink: #2b1d12;
+  --muted: #6b5844;
+  --gold: #b8860b;
+  --bg: #EAD7CE;
+  --card: rgba(255, 255, 255, 0.5);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.65;
+  padding: 2.5rem 1.5rem 4rem;
+}
+.legal-wrap { max-width: 760px; margin: 0 auto; }
+
+.brand {
+  font-family: "Pixelify Sans", system-ui, sans-serif;
+  font-size: 1.5rem;
+  color: var(--gold);
+  text-decoration: none;
+  display: inline-block;
+  margin-bottom: 2rem;
+}
+.brand::before { content: "← "; }
+
+h1 {
+  font-family: "Pixelify Sans", system-ui, sans-serif;
+  font-size: clamp(2rem, 6vw, 2.8rem);
+  color: var(--gold);
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.5px;
+}
+.updated { color: var(--muted); font-size: 0.9rem; margin-bottom: 2.2rem; }
+
+h2 {
+  font-family: "Pixelify Sans", system-ui, sans-serif;
+  font-size: 1.3rem;
+  color: var(--gold);
+  margin: 2.2rem 0 0.6rem;
+}
+p, li { color: var(--ink); margin-bottom: 0.8rem; }
+ul { padding-left: 1.4rem; }
+a { color: var(--gold); }
+
+.note {
+  background: var(--card);
+  border-left: 5px solid var(--gold);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 2rem;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+mark {
+  background: rgba(184, 134, 11, 0.18);
+  color: var(--ink);
+  padding: 0 0.2em;
+  border-radius: 3px;
+}
+
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 2px dotted var(--gold);
+  font-size: 0.95rem;
+}
