@@ -21,6 +21,25 @@ before — mypy always exited first and masked it.
       them one, promote a single rule at a time; most of the noise is
       `Config(**overrides)` in test helpers.
 
+## Decide before the next GPU run
+
+- [ ] **The 360M token budget changed meaning on 2026-09-10.** Gradient
+      accumulation was declared, budgeted for, and never executed — the loop
+      took one micro-batch per optimizer step. `frigate_360m_full` gpu
+      (`batch_size=12`, `grad_accum=8`) therefore ran at 6,144 tokens/iter while
+      `resolve_max_iters` sized the horizon for 49,152, so a "1.6 epoch" run saw
+      **950M tokens, 12.5% of the 7.6B intended**.
+      The loop now accumulates, which means the same config is honest *and*
+      roughly 8x the compute. Nothing was changed to hide that: pick a real
+      `epochs` for the next run rather than inheriting 1.6 by accident.
+      `resolve_max_iters` now prints tokens/iter and the total, so the two can
+      never drift apart silently again.
+- [ ] **Run `make autobatch` on the rented box before the next long run.**
+      Micro-batch is the last throughput lever after bf16 + flash + compile, and
+      it depends on the card. `batch_size=12` predates `fused_loss`, which frees
+      the `[B*T, vocab]` logits tensor — the allocation that set that number.
+      12 is almost certainly now too low.
+
 ## Half-built — scaffolded, needs flesh
 
 - [ ] **Self-play** (`src/nanobeard/rejection/selfplay.py`). Has a Makefile
@@ -126,7 +145,9 @@ Ordered. Each step is a hard blocker for the next. Plan derived 2026-09-10 from
 
 - [ ] Ckpt migration script (drop the `training.config` shim long-term).
 - [ ] Sample regression test — store golden samples per release tag.
-- [ ] Docker image pinned for Vast.ai (CUDA + torch versions).
+- [ ] Cheapest-provider sweep across vast/RunPod rather than vast alone.
+      `vast_launch.sh` now bids (interruptible, datacenter-only, ~$0.40 cap) and
+      verifies `is_bid` after create, but only against vast.
 - [ ] DVC or hash-based data versioning for the bins.
 - [ ] HF Hub model-card auto-gen from `training_metadata.json`. `hf/model_card.md`
       now exists but is hand-written and nothing in `hf/*.py` reads it or

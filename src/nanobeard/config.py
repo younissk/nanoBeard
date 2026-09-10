@@ -31,6 +31,11 @@ class Config:
     use_rmsnorm: bool = False  # RMSNorm instead of LayerNorm
     use_qk_norm: bool = False  # per-head RMSNorm on Q and K (stabilizes depth)
     rope_theta: float = 10000.0  # RoPE base frequency
+    # Fuse lm_head + cross-entropy into chunks over the flattened batch. Saves
+    # the [B*T, vocab] logits tensor and its gradient (~800MB at B=12,T=512,
+    # V=16k), which is what caps the micro-batch. Training only — the fused
+    # path returns no logits, so sampling never uses it.
+    fused_loss: bool = False
 
     # ----- Optimizer -----
     optimizer: str = "adamw"  # "adamw" | "muon"
@@ -55,6 +60,12 @@ class Config:
     batch_size: int = 32
     gradient_accumulation_steps: int = 1
     eval_interval: int = 500
+    # Interruptible/spot hosts evict with no warning, so checkpoint on wall-clock,
+    # not on iteration count — a slow iteration must not widen the loss window.
+    # Local saves are cheap (disk); Hub pushes are not (hundreds of MB), so they
+    # run on a slower cadence and in a background thread. 0 disables either.
+    ckpt_interval_min: float = 15.0
+    hub_push_interval_min: float = 60.0
     eval_iters: int = 100
     log_interval: int = 10
 

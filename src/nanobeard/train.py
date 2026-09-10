@@ -1,6 +1,9 @@
 import argparse
+import contextlib
 import math
 import os
+import shutil
+import threading
 import time
 from contextlib import nullcontext
 from typing import cast
@@ -57,8 +60,10 @@ def resolve_max_iters(config: Config) -> Config:
         return config
 
     train_tokens = os.path.getsize(config.train_bin) // 2  # uint16 = 2 bytes/token
+    # max(1, ...) mirrors the training loop's guard — the two must agree on
+    # tokens/iter or the horizon is wrong by exactly the accumulation factor.
     tokens_per_iter = (
-        config.batch_size * config.block_size * config.gradient_accumulation_steps
+        config.batch_size * config.block_size * max(1, config.gradient_accumulation_steps)
     )
     epoch_iters = max(1, round(config.epochs * train_tokens / tokens_per_iter))
     horizon = min(epoch_iters, config.max_iters)
@@ -67,6 +72,12 @@ def resolve_max_iters(config: Config) -> Config:
         f"epochs={config.epochs}: {epoch_iters} iters for a full pass over "
         f"{train_tokens:,} tokens; training {horizon} iters "
         f"(max_iters ceiling {config.max_iters})."
+    )
+    print(
+        f"  tokens/iter = {config.batch_size} x {config.block_size} x "
+        f"{config.gradient_accumulation_steps} = {tokens_per_iter:,}; "
+        f"total = {horizon * tokens_per_iter:,} tokens "
+        f"({horizon * tokens_per_iter / train_tokens:.2f} passes)."
     )
     config.max_iters = horizon
     config.lr_decay_iters = horizon
@@ -173,6 +184,36 @@ def maybe_init_wandb(config: Config):
     )
 
 
+# One upload at a time. A second push starting while the first is in flight
+# would race on the staged file and waste the uplink the training box is paying
+# for; skipping is always the right call because the next push is minutes away.
+_upload_lock = threading.Lock()
+
+
+def _push_to_hub(staged: str, repo_id: str, iter_num: int, val_loss: float, tag: str) -> None:
+    """Upload a staged checkpoint copy. Runs on a background thread."""
+    if not _upload_lock.acquire(blocking=False):
+        print("  → Hub push already in flight, skipping this one")
+        return
+    try:
+        from huggingface_hub import HfApi
+
+        HfApi().upload_file(
+            path_or_fileobj=staged,
+            path_in_repo="ckpt.pt",
+            repo_id=repo_id,
+            token=os.environ.get("HF_TOKEN"),
+            commit_message=f"iter {iter_num} | val {val_loss:.4f} ({tag})",
+        )
+        print(f"  → pushed to {repo_id} (iter {iter_num})")
+    except Exception as e:
+        print(f"  ! Hub upload failed ({type(e).__name__}: {e}) — continuing")
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(staged)
+        _upload_lock.release()
+
+
 def save_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
@@ -181,7 +222,13 @@ def save_checkpoint(
     val_loss: float,
     best_val_loss: float,
     tag: str = "latest",
-):
+    push: bool = True,
+) -> threading.Thread | None:
+    """Write the checkpoint locally; optionally start a background Hub push.
+
+    Returns the upload thread so a caller that is about to exit can join it —
+    the thread is a daemon, so nothing else keeps it alive.
+    """
     raw_model: nn.Module = getattr(model, "_orig_mod", model)
 
     tokenizer_sha256 = None
@@ -202,20 +249,24 @@ def save_checkpoint(
     torch.save(checkpoint, path)
     print(f"  → saved checkpoint to {path} ({tag}, val {val_loss:.4f})")
 
-    if config.hf_ckpt_repo:
+    if push and config.hf_ckpt_repo:
+        # Upload a copy: the next torch.save would otherwise rewrite the file
+        # mid-transfer and push a truncated checkpoint over a good one.
+        staged = f"{path}.upload"
         try:
-            from huggingface_hub import HfApi
+            shutil.copyfile(path, staged)
+        except OSError as e:
+            print(f"  ! could not stage checkpoint for upload ({e}) — continuing")
+            return None
+        thread = threading.Thread(
+            target=_push_to_hub,
+            args=(staged, config.hf_ckpt_repo, iter_num, val_loss, tag),
+            daemon=True,
+        )
+        thread.start()
+        return thread
 
-            HfApi().upload_file(
-                path_or_fileobj=path,
-                path_in_repo="ckpt.pt",
-                repo_id=config.hf_ckpt_repo,
-                token=os.environ.get("HF_TOKEN"),
-                commit_message=f"iter {iter_num} | val {val_loss:.4f} ({tag})",
-            )
-            print(f"  → pushed to {config.hf_ckpt_repo}")
-        except Exception as e:
-            print(f"  ! Hub upload failed ({type(e).__name__}: {e}) — continuing")
+    return None
 
 
 def train(config: Config):
@@ -252,6 +303,9 @@ def train(config: Config):
         print(f"Resumed at iter {iter_num}, best_val_loss={best_val_loss:.4f}")
 
     t0 = time.time()
+    last_ckpt_t = t0
+    last_push_t = t0
+    last_val_loss = best_val_loss
 
     while iter_num < config.max_iters:
         lr = get_lr(iter_num, config)
@@ -279,9 +333,12 @@ def train(config: Config):
                     step=iter_num,
                 )
 
+            last_val_loss = losses["val"]
             is_best = losses["val"] < best_val_loss
             if is_best:
                 best_val_loss = losses["val"]
+            # A new best is worth the uplink immediately; routine saves ride the
+            # wall-clock cadence below instead of pushing on every eval.
             save_checkpoint(
                 model,
                 optimizer,
@@ -290,14 +347,54 @@ def train(config: Config):
                 losses["val"],
                 best_val_loss,
                 tag="best" if is_best else "latest",
+                push=is_best,
             )
+            last_ckpt_t = time.time()
+            if is_best:
+                last_push_t = last_ckpt_t
 
-        x, y = get_batch("train", config)
-        with ctx:
-            _, loss = model(x, y)
+        # Wall-clock checkpointing. On an interruptible host eviction arrives
+        # with no warning, so the thing that must be bounded is minutes of lost
+        # work, not iterations — and iteration time is not constant.
+        now = time.time()
+        due_ckpt = (
+            config.ckpt_interval_min > 0
+            and now - last_ckpt_t >= config.ckpt_interval_min * 60
+        )
+        due_push = (
+            config.hf_ckpt_repo
+            and config.hub_push_interval_min > 0
+            and now - last_push_t >= config.hub_push_interval_min * 60
+        )
+        if due_ckpt or due_push:
+            save_checkpoint(
+                model,
+                optimizer,
+                config,
+                iter_num,
+                last_val_loss,
+                best_val_loss,
+                tag="periodic",
+                push=bool(due_push),
+            )
+            last_ckpt_t = now
+            if due_push:
+                last_push_t = now
 
+        # One optimizer step = gradient_accumulation_steps micro-batches. The
+        # loss is divided by the count so the accumulated gradient is the mean
+        # over the effective batch, not the sum — otherwise the effective LR
+        # scales with the accumulation factor.
         optimizer.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        micro_steps = max(1, config.gradient_accumulation_steps)
+        loss_sum = 0.0
+        for _ in range(micro_steps):
+            x, y = get_batch("train", config)
+            with ctx:
+                _, loss = model(x, y)
+                loss = loss / micro_steps
+            scaler.scale(loss).backward()
+            loss_sum += loss.item()
 
         if config.grad_clip > 0:
             scaler.unscale_(optimizer)
@@ -307,14 +404,27 @@ def train(config: Config):
         scaler.update()
 
         if iter_num % config.log_interval == 0 and iter_num > 0:
-            print(f"  iter {iter_num} | minibatch loss {loss.item():.4f} | lr {lr:.2e}")
+            print(f"  iter {iter_num} | minibatch loss {loss_sum:.4f} | lr {lr:.2e}")
             if wandb_run is not None:
                 wandb_run.log(
-                    {"train/minibatch_loss": loss.item(), "lr": lr},
+                    {"train/minibatch_loss": loss_sum, "lr": lr},
                     step=iter_num,
                 )
 
         iter_num += 1
+
+    # Final checkpoint: the cadences above otherwise discard whatever happened
+    # since the last one, which on a short run can be the whole tail.
+    final_push = save_checkpoint(
+        model, optimizer, config, iter_num, last_val_loss, best_val_loss,
+        tag="final", push=True,
+    )
+    # Daemon thread: nothing else keeps the process alive for it, and on a spot
+    # box the machine may be gone shortly after. Wait for the final upload.
+    if final_push is not None:
+        final_push.join(timeout=600)
+        if final_push.is_alive():
+            print("  ! final Hub push still running after 10 min — abandoning it")
 
     print(f"\nTraining complete. Best val loss: {best_val_loss:.4f}")
     if wandb_run is not None:

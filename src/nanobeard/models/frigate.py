@@ -58,6 +58,52 @@ def make_norm(config: Config, dim: int) -> nn.Module:
     return nn.LayerNorm(dim, bias=config.bias)
 
 
+# Rows of the flattened batch per fused-loss chunk. 1024 keeps the temporary
+# logits slice near 64MB at a 16k vocab — small enough to matter, large enough
+# that the per-chunk launch overhead stays invisible.
+LOSS_CHUNK_ROWS = 1024
+
+
+def fused_cross_entropy(
+    hidden: torch.Tensor,
+    lm_head: nn.Linear,
+    targets: torch.Tensor,
+    chunk_rows: int = LOSS_CHUNK_ROWS,
+) -> torch.Tensor:
+    """Cross-entropy without ever materialising the full logits tensor.
+
+    The unfused path projects every position to vocab size, keeps that tensor
+    for the backward pass, and keeps its gradient too. At a 16k vocab that is
+    the single largest allocation in the step and it is what decides how big a
+    micro-batch fits. Projecting one chunk at a time drops the peak to one
+    chunk's worth.
+
+    Mathematically identical to `F.cross_entropy(..., reduction="mean")` over
+    non-ignored positions: each chunk contributes its *summed* loss, and the
+    total is divided by the number of contributing positions at the end.
+    Weighting by chunk means instead would mis-weight a ragged final chunk.
+    """
+    flat_hidden = hidden.reshape(-1, hidden.size(-1))
+    flat_targets = targets.reshape(-1)
+
+    n_valid = int((flat_targets != -100).sum())
+    if n_valid == 0:
+        # Every position masked. Return a real zero that still carries a grad_fn,
+        # so the caller's backward() does not blow up on a leaf tensor.
+        return flat_hidden.sum() * 0.0
+
+    total = flat_hidden.new_zeros((), dtype=torch.float32)
+    for start in range(0, flat_hidden.size(0), chunk_rows):
+        stop = start + chunk_rows
+        chunk_logits = lm_head(flat_hidden[start:stop])
+        total = total + F.cross_entropy(
+            chunk_logits.float(),
+            flat_targets[start:stop],
+            reduction="sum",
+        )
+    return total / n_valid
+
+
 def build_rope_cache(
     block_size: int, head_dim: int, theta: float
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -229,7 +275,7 @@ class GPT(nn.Module):
         self,
         idx: torch.Tensor,
         targets: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         B, T = idx.size()
         assert self.config.block_size >= T, (
             f"Cannot forward sequence of length {T}; block_size is {self.config.block_size}"
@@ -247,6 +293,12 @@ class GPT(nn.Module):
             x = block(x)
 
         x = self.ln_f(x)
+
+        # Fused path: skip the full projection entirely. Nothing in training or
+        # eval reads logits when targets are given (train/sft do `_, loss =`),
+        # and sampling never passes targets, so returning None here is safe.
+        if targets is not None and self.config.fused_loss:
+            return None, fused_cross_entropy(x, self.lm_head, targets)
 
         logits = self.lm_head(x)
 

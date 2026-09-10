@@ -1,4 +1,4 @@
-.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility \
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
         vast-launch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
@@ -33,6 +33,7 @@ help:
 	@echo "  make sample PROMPT='Ahoy'   Generate from runs/$(CONFIG)/ckpt.pt"
 	@echo "  make chat                   Browser chat UI over every exported GGUF"
 	@echo "  make fertility              Tokens/char by domain (REFERENCE=Qwen/Qwen3-0.6B)"
+	@echo "  make autobatch              Measure tok/s vs micro-batch on this GPU"
 	@echo ""
 	@echo "  make publish                Push CONFIG ckpt to its HF model repo"
 	@echo "  make publish-space          Push playground Space"
@@ -145,6 +146,18 @@ publish-gguf:
 		--gguf-dir $(GGUF_OUT) --repo $(GGUF_REPO) --title $(GGUF_TITLE) \
 		--params $(GGUF_PARAMS) --val-loss $(GGUF_VAL_LOSS) \
 		--base-model $(GGUF_BASE_MODEL) $(if $(PUSH),--push,)
+
+# ----- Throughput tuning -----
+# Micro-batch is the last throughput lever after bf16 + flash + compile, and it
+# is the one that can only be measured on the card you rented. Run this once on
+# a fresh box before starting a long run.
+
+AUTOBATCH_VARIANT ?= gpu
+AUTOBATCH_LIMIT ?= 512
+
+autobatch:
+	$(UV) run python -m nanobeard.autobatch \
+		--config $(CONFIG_FILE) --variant $(AUTOBATCH_VARIANT) --limit $(AUTOBATCH_LIMIT)
 
 # ----- Tokenizer diagnostics -----
 # Tokens-per-character by domain. REFERENCE=<hf-repo> adds a control tokenizer

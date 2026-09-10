@@ -70,6 +70,9 @@ def make_config_gpu() -> Config:
         device="cuda",
         dtype="bfloat16",
         compile=True,
+        # Chunked lm_head+CE: frees the [B*T, vocab] logits tensor, which is
+        # what caps the micro-batch on a 24GB card.
+        fused_loss=True,
         batch_size=12,
         gradient_accumulation_steps=8,  # effective batch 96, 49,152 tokens/iter
         # epochs is the real knob: 1.6 passes over pirate_enhanced_full

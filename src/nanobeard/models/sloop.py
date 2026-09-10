@@ -84,6 +84,14 @@ class Block(nn.Module):
 class GPT(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
+        if getattr(config, "fused_loss", False):
+            # Sloop keeps the plain cross-entropy path. Accepting the flag and
+            # ignoring it would look like a working memory optimisation and
+            # silently be nothing — fail instead.
+            raise ValueError(
+                "fused_loss is implemented for the frigate architecture only; "
+                "set fused_loss=False for model_name='sloop'"
+            )
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config

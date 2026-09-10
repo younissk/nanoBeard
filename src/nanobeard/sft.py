@@ -198,12 +198,19 @@ def sft_train(config: Config, pretrained_repo: str):
                 push=is_best,
             )
 
-        x, y = get_sft_batch(train_examples, config)
-        with ctx:
-            _, loss = model(x, y)
-
+        # Same accumulation contract as pretraining: one optimizer step per
+        # gradient_accumulation_steps micro-batches, loss averaged over them.
         optimizer.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        micro_steps = max(1, config.gradient_accumulation_steps)
+        loss_sum = 0.0
+        for _ in range(micro_steps):
+            x, y = get_sft_batch(train_examples, config)
+            with ctx:
+                _, loss = model(x, y)
+                loss = loss / micro_steps
+            scaler.scale(loss).backward()
+            loss_sum += loss.item()
+
         if config.grad_clip > 0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
@@ -211,7 +218,7 @@ def sft_train(config: Config, pretrained_repo: str):
         scaler.update()
 
         if iter_num % config.log_interval == 0 and iter_num > 0:
-            print(f"  iter {iter_num} | loss {loss.item():.4f} | lr {lr:.2e}")
+            print(f"  iter {iter_num} | loss {loss_sum:.4f} | lr {lr:.2e}")
 
         iter_num += 1
 
