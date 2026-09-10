@@ -1,4 +1,7 @@
-.PHONY: help install env source dataset train train-gpu sft sample publish publish-space test test-all test-fast test-slow clean clean-data clean-ckpt
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat \
+        publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
+        vast-launch vast-ssh vast-logs vast-destroy \
+        test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
 
 UV ?= uv
 # Longer HF download timeout — the default is short and trips on slow shards /
@@ -16,7 +19,7 @@ help:
 	@echo "nanoBeard make targets — pass CONFIG=<name> (default: sloop)"
 	@echo ""
 	@echo "  make install                Install Python deps via uv"
-	@echo "  make env                    Copy example.env -> .env"
+	@echo "  make env                    Copy envs/example.env -> envs/.env"
 	@echo ""
 	@echo "  make source SOURCE=<name>   Build+cache one source -> data/sources/<name>/"
 	@echo "  make prepare DATASET=<name> Download+cache all of a recipe's sources (no tokenizer/bins)"
@@ -28,14 +31,25 @@ help:
 	@echo "                              Train model (default: smoke variant)"
 	@echo "  make sft                    SFT a pretrained ckpt"
 	@echo "  make sample PROMPT='Ahoy'   Generate from runs/$(CONFIG)/ckpt.pt"
-	@echo "  make eval                   Perplexity + sample gallery -> evals/results/<date>/$(CONFIG)/"
-	@echo "  make eval-quick             Fast eval (20 batches, short samples)"
+	@echo "  make chat                   Browser chat UI over every exported GGUF"
+	@echo ""
 	@echo "  make publish                Push CONFIG ckpt to its HF model repo"
 	@echo "  make publish-space          Push playground Space"
+	@echo "  make export-gguf            Frigate ckpt -> GGUF (needs local llama.cpp)"
+	@echo "  make publish-gguf PUSH=1    Push a GGUF dir to HF (dry-run without PUSH)"
+	@echo ""
+	@echo "  make serve                  Serve GGUF_MODEL via llama-server (blocks)"
+	@echo "  make rejection RS_N=30      N candidates per prompt -> $(RS_OUT)"
+	@echo "  make view                   Build + open the HTML review UI"
+	@echo "  make judge                  Local judge endpoint for the ask-qwen button"
+	@echo "  make judge-all JUDGE_VOTES=3  Batch-judge all prompts (shuffled order)"
+	@echo "  make analyze                Diversity + judge-bias diagnostics"
+	@echo "  make selfplay               Qwen-driven conversations -> $(SP_OUT)"
 	@echo ""
 	@echo "  make test                   Fast tests (excludes slow marker)"
 	@echo "  make test-slow              Slow integration tests only"
 	@echo "  make test-all               Everything"
+	@echo "  make lint / format / typecheck"
 	@echo ""
 	@echo "  make clean                  Remove caches + wandb dir"
 	@echo "  make clean-ckpt             Remove runs/$(CONFIG)/"
@@ -45,10 +59,10 @@ install:
 	$(UV) sync
 
 env:
-	@if [ -f .env ]; then \
-		echo ".env already exists — leaving alone"; \
+	@if [ -f envs/.env ]; then \
+		echo "envs/.env already exists — leaving alone"; \
 	else \
-		cp example.env .env && echo "Created .env from example.env — fill in your tokens"; \
+		cp envs/example.env envs/.env && echo "Created envs/.env from envs/example.env — fill in your tokens"; \
 	fi
 
 # ----- Data pipeline -----
@@ -85,7 +99,7 @@ publish:
 	$(UV) run python -m nanobeard.publish --config $(CONFIG_FILE)
 
 publish-space:
-	$(UV) run python scripts/publish_space.py
+	$(UV) run python hf/publish_space.py
 
 # ----- Dataset to/from HF Hub (skips 30-min piratize on remote machines) -----
 
@@ -95,7 +109,7 @@ push-data:
 # ----- Vast.ai -----
 
 vast-launch:
-	CONFIG=$(CONFIG) ./scripts/vast_launch.sh
+	CONFIG=$(CONFIG) ./scripts/vast/vast_launch.sh
 
 vast-ssh:
 	@INSTANCE=$$(cat .vast_instance 2>/dev/null) && vastai ssh-url $$INSTANCE
@@ -104,15 +118,104 @@ vast-logs:
 	@INSTANCE=$$(cat .vast_instance 2>/dev/null) && vastai logs $$INSTANCE
 
 vast-destroy:
-	./scripts/vast_destroy.sh
+	./scripts/vast/vast_destroy.sh
 
 # ----- Eval -----
 
-eval:
-	$(UV) run python -m nanobeard.eval.run --config $(CONFIG_FILE)
+# ----- GGUF export (on-device llama.cpp builds) -----
+# Requires a local llama.cpp clone; override with LLAMA_CPP=<path>.
 
-eval-quick:
-	$(UV) run python -m nanobeard.eval.run --config $(CONFIG_FILE) --n-batches 20 --max-new-tokens 50
+GGUF_CKPT ?= runs/$(CONFIG)/sft_ckpt.pt
+GGUF_TOKENIZER ?= $(DATA_DIR)/pirate_bpe.json
+GGUF_NAME ?= $(CONFIG)
+GGUF_OUT ?= export/gguf/$(CONFIG)
+GGUF_QUANTS ?= Q4_K_M Q8_0
+
+export-gguf:
+	$(UV) run python hf/export_gguf.py \
+		--ckpt $(GGUF_CKPT) --tokenizer $(GGUF_TOKENIZER) \
+		--name $(GGUF_NAME) --out-dir $(GGUF_OUT) --quants $(GGUF_QUANTS) \
+		$(if $(LLAMA_CPP),--llama-cpp $(LLAMA_CPP),) \
+		$(if $(CONVERTER_PYTHON),--converter-python $(CONVERTER_PYTHON),)
+
+# Dry-run by default. Add PUSH=1 to actually upload.
+publish-gguf:
+	$(UV) run python hf/publish_gguf.py \
+		--gguf-dir $(GGUF_OUT) --repo $(GGUF_REPO) --title $(GGUF_TITLE) \
+		--params $(GGUF_PARAMS) --val-loss $(GGUF_VAL_LOSS) \
+		--base-model $(GGUF_BASE_MODEL) $(if $(PUSH),--push,)
+
+# ----- Chat playground -----
+# Browser UI over the exported GGUFs. Spawns its own llama-server on
+# CHAT_LLAMA_PORT (not RS_PORT — so this never collides with `make serve`).
+# ATTACH=<url> reuses an already-running one instead.
+
+CHAT_PORT ?= 8800
+CHAT_LLAMA_PORT ?= 8901
+CHAT_GGUF_ROOT ?= export/gguf
+
+chat:
+	$(UV) run python -m nanobeard.chat.server \
+		--port $(CHAT_PORT) --llama-port $(CHAT_LLAMA_PORT) \
+		--gguf-root $(CHAT_GGUF_ROOT) \
+		$(if $(GGUF_MODEL_PICK),--model $(GGUF_MODEL_PICK),) \
+		$(if $(ATTACH),--attach $(ATTACH),)
+
+# ----- Rejection sampling -----
+# Two steps: serve the GGUF, then generate N candidates per prompt.
+# Needs llama.cpp on PATH (brew install llama.cpp) and a local GGUF build.
+
+GGUF_MODEL ?= export/gguf/frigate-360m/frigate-360M.Q8_0.gguf
+RS_PORT ?= 8899
+RS_SLOTS ?= 8
+RS_N ?= 30
+RS_OUT ?= runs/rejection/$(notdir $(basename $(GGUF_MODEL))).jsonl
+
+# --cache-ram is the one that matters: it defaults to 8192 MiB, which on a
+# small machine lets the prompt cache grow until the OS kills the server
+# mid-run. Cap it well under available RAM.
+RS_CACHE_RAM ?= 512
+
+serve:
+	llama-server -m $(GGUF_MODEL) --host 127.0.0.1 --port $(RS_PORT) \
+		-c 4096 -np $(RS_SLOTS) --cache-ram $(RS_CACHE_RAM) --no-webui
+
+# RESUME=1 keeps existing rows and fills only the gaps.
+rejection:
+	$(UV) run python -m nanobeard.rejection.generate \
+		--out $(RS_OUT) --n $(RS_N) --workers $(RS_SLOTS) \
+		--server http://127.0.0.1:$(RS_PORT) $(if $(RESUME),--resume,)
+
+# Local judge endpoint for the viewer's "ask qwen" button. Holds
+# OPENROUTER_API_KEY server-side — it never enters the HTML.
+JUDGE_MODEL ?= qwen/qwen3-30b-a3b-instruct-2507
+# Candidate order is shuffled every call (fixes a measured primacy bias).
+# JUDGE_VOTES>1 re-judges with a fresh order each round and takes the majority.
+JUDGE_VOTES ?= 1
+
+judge:
+	$(UV) run python -m nanobeard.rejection.judge --serve --model $(JUDGE_MODEL) --votes $(JUDGE_VOTES)
+
+# Batch-judge every prompt and bake the verdicts into the next `make view`.
+judge-all:
+	$(UV) run python -m nanobeard.rejection.judge --all --in $(RS_OUT) --model $(JUDGE_MODEL) --votes $(JUDGE_VOTES)
+
+# Diversity + judge-bias diagnostics. Run this before trusting any picks.
+analyze:
+	$(UV) run python -m nanobeard.rejection.analyze --in $(RS_OUT)
+
+# Qwen drives the conversation, nanoBeard answers by rejection sampling.
+# Needs `make serve` running (it talks to the same llama-server).
+SP_OUT ?= runs/selfplay/$(notdir $(basename $(GGUF_MODEL))).jsonl
+SP_CONVERSATIONS ?= 100
+
+selfplay:
+	$(UV) run python -m nanobeard.rejection.selfplay \
+		--out $(SP_OUT) --conversations $(SP_CONVERSATIONS) --n $(RS_N)
+
+view:
+	$(UV) run python -m nanobeard.rejection.viewer --in $(RS_OUT)
+	@open $(basename $(RS_OUT)).html 2>/dev/null || echo "open $(basename $(RS_OUT)).html"
 
 # ----- Tests -----
 
@@ -127,14 +230,6 @@ test-slow:
 test-all:
 	$(UV) run pytest -m "slow or not slow"
 
-# ----- Docs -----
-
-docs-serve:
-	$(UV) run mkdocs serve
-
-docs-build:
-	$(UV) run mkdocs build --strict
-
 # ----- Lint / type-check -----
 
 lint:
@@ -143,9 +238,11 @@ lint:
 format:
 	$(UV) run ruff format .
 
+# NOTE: currently RED — 8 pre-existing mypy errors in optim.py / sample.py.
+# See TODO.md. Scope is deliberately nanobeard-only until that's green.
 typecheck:
-	$(UV) run mypy nanobeard
-	$(UV) run pyright nanobeard
+	$(UV) run mypy src/nanobeard
+	$(UV) run pyright
 
 # ----- Cleanup -----
 

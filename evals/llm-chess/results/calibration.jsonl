@@ -1,2 +1,0 @@
-{"category": "factual", "judge": "gpt-4o-judge", "judge_version": "gpt-4o-2024-11-20", "model": "sloop-t0.8", "n": 5, "agree": 5, "tie": 0, "miss": 0, "miss_rate": 0.0}
-{"category": "instruction_following", "judge": "gpt-4o-judge", "judge_version": "gpt-4o-2024-11-20", "model": "sloop-t0.8", "n": 7, "agree": 7, "tie": 0, "miss": 0, "miss_rate": 0.0}

@@ -19,12 +19,6 @@ dependencies = [
 ]
 
 [dependency-groups]
-# Tools for `scripts/export_onnx.py` (ONNX + tokenizer for the mobile app).
-# Not needed for training: `uv sync --group export` to install.
-export = [
-    "onnx>=1.21.0",
-    "onnxruntime>=1.26.0",
-]
 dev = [
     "pytest>=8.0.0",
     "pytest-xdist>=3.5.0",
@@ -32,9 +26,6 @@ dev = [
     "ruff>=0.13.0",
     "mypy>=1.10.0",
     "pyright>=1.1.400",
-    "mkdocs>=1.6.0",
-    "mkdocs-material>=9.5.0",
-    "mkdocstrings[python]>=0.25.0",
 ]
 
 [build-system]
@@ -42,10 +33,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["nanobeard"]
+packages = ["src/nanobeard"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src/tests"]
 addopts = [
     "-ra",
     "--strict-markers",
@@ -65,7 +56,7 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = ["space/nanobeard"]
+exclude = ["hf/space/nanobeard"]
 
 [tool.ruff.lint]
 select = [
@@ -83,8 +74,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B011", "B018"]    # asserts + useless expressions are fine in tests
-"nanobeard/__init__.py" = ["F401"]  # shim imports
+"src/tests/*" = ["B011", "B018"]    # asserts + useless expressions are fine in tests
+"src/nanobeard/__init__.py" = ["F401"]  # shim imports
 
 [tool.mypy]
 python_version = "3.12"
@@ -95,7 +86,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 disallow_untyped_defs = false
 check_untyped_defs = true
-exclude = ["space/nanobeard/", "build/", "dist/"]
+exclude = ["hf/space/nanobeard/", "build/", "dist/"]
 
 [[tool.mypy.overrides]]
 module = ["torch.*", "tokenizers.*", "datasets.*", "huggingface_hub.*", "safetensors.*", "gradio.*", "wandb.*", "arrr.*"]

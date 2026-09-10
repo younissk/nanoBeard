@@ -1,8 +1,8 @@
 {
-  "include": ["nanobeard", "configs", "tests"],
+  "include": ["src", "configs"],
   "exclude": [
     "**/__pycache__",
-    "space/nanobeard",
+    "hf/space/nanobeard",
     "build",
     "dist",
     ".venv",

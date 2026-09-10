@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nanoBeard chat</title>
+<style>
+  /* Palette lifted from web/index.html so the playground and the site match. */
+  :root {
+    --ink: #2b1d12; --parchment: #f4e9d8; --tan: #d8c4ad;
+    --rope: #7a4f2e; --rope-dark: #5a3a22; --gold: #b8860b; --gold-light: #e0b04a;
+    --muted: #6b5844;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--ink); color: var(--parchment);
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 15px; line-height: 1.5;
+  }
+  header {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--rope-dark);
+    border-bottom: 2px solid var(--gold);
+  }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; letter-spacing: .04em; color: var(--gold-light); }
+  select, button, input[type=number] {
+    font: inherit; font-size: 13px; color: var(--parchment);
+    background: var(--rope); border: 1px solid var(--gold); border-radius: 4px;
+    padding: 4px 8px;
+  }
+  select { max-width: 46vw; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--gold); color: var(--ink); }
+  button:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
+  label { font-size: 12px; color: var(--tan); display: inline-flex; gap: 5px; align-items: center; }
+  input[type=number] { width: 68px; }
+
+  #log { flex: 1; overflow-y: auto; padding: 20px 16px; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .msg { margin-bottom: 16px; display: flex; gap: 10px; }
+  .who {
+    flex: 0 0 62px; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .06em; padding-top: 2px;
+  }
+  .msg.user .who { color: var(--muted); }
+  .msg.bot .who { color: var(--gold-light); }
+  .text { white-space: pre-wrap; word-break: break-word; flex: 1; }
+  .msg.bot .text { color: var(--parchment); }
+  .msg.user .text { color: var(--tan); }
+  .note { color: var(--muted); font-size: 13px; font-style: italic; }
+  .err { color: #e07a5f; }
+  .cursor::after { content: "▍"; color: var(--gold); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  footer { border-top: 1px solid var(--rope); padding: 12px 16px; background: #241810; }
+  form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; font: inherit; padding: 9px 11px; border-radius: 5px;
+    background: var(--rope-dark); color: var(--parchment);
+    border: 1px solid var(--rope); min-height: 44px; max-height: 180px;
+  }
+  textarea:focus { outline: none; border-color: var(--gold); }
+  #status { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚓ nanoBeard</h1>
+  <select id="model" title="Switching restarts llama-server"></select>
+  <label>temp <input type="number" id="temperature" value="0.8" step="0.05" min="0" max="2"></label>
+  <label>top-k <input type="number" id="top_k" value="40" step="1" min="0"></label>
+  <label>max <input type="number" id="max_tokens" value="200" step="10" min="16"></label>
+  <button id="clear" type="button">Clear</button>
+  <button id="regen" type="button">Regenerate</button>
+</header>
+
+<div id="log"><div class="wrap" id="wrap"></div></div>
+
+<footer>
+  <form id="form">
+    <textarea id="input" placeholder="Say something to the pirate…  (Enter to send, Shift+Enter for a newline)" autofocus></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
+  <div id="status"></div>
+</footer>
+
+<script>
+// Conversation state, in the same shape the server renders into the SFT
+// transcript: [{role: "user"|"bot", text}].
+let turns = [];
+let busy = false;
+
+const $ = (id) => document.getElementById(id);
+const wrap = $("wrap"), log = $("log"), status = $("status");
+
+function opts() {
+  return {
+    temperature: parseFloat($("temperature").value),
+    top_k: parseInt($("top_k").value, 10),
+    max_tokens: parseInt($("max_tokens").value, 10),
+  };
+}
+
+function render() {
+  wrap.innerHTML = "";
+  if (!turns.length) {
+    wrap.innerHTML = '<p class="note">Trained on 512 tokens of context — long chats get trimmed from the oldest turn.</p>';
+    return;
+  }
+  for (const t of turns) {
+    const row = document.createElement("div");
+    row.className = "msg " + (t.role === "user" ? "user" : "bot");
+    row.innerHTML = `<div class="who">${t.role === "user" ? "You" : "Pirate"}</div>`;
+    const text = document.createElement("div");
+    text.className = "text";
+    text.textContent = t.text;
+    row.appendChild(text);
+    wrap.appendChild(row);
+  }
+  log.scrollTop = log.scrollHeight;
+  return wrap.lastChild.querySelector(".text");
+}
+
+function setBusy(on, msg) {
+  busy = on;
+  $("send").disabled = on;
+  $("model").disabled = on || $("model").dataset.attached === "1";
+  $("regen").disabled = on || !turns.length;
+  status.textContent = msg || "";
+  status.className = "";
+}
+
+function fail(msg) {
+  status.textContent = msg;
+  status.className = "err";
+}
+
+async function loadModels() {
+  const r = await fetch("/api/models");
+  const d = await r.json();
+  const sel = $("model");
+  sel.innerHTML = "";
+  if (d.attached) {
+    sel.dataset.attached = "1";
+    sel.innerHTML = `<option>attached: ${d.attached}</option>`;
+    sel.disabled = true;
+    return;
+  }
+  if (!d.models.length) {
+    sel.innerHTML = "<option>no GGUFs found</option>";
+    sel.disabled = true;
+    return;
+  }
+  for (const m of d.models) {
+    const o = document.createElement("option");
+    o.value = m.path;
+    o.textContent = `${m.label}  (${m.size_mb} MB)`;
+    if (m.path === d.current) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+$("model").addEventListener("change", async (e) => {
+  const path = e.target.value;
+  setBusy(true, "loading model…");
+  try {
+    const r = await fetch("/api/model", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    turns = [];
+    render();
+    setBusy(false, "loaded " + path.split("/").pop());
+  } catch (err) {
+    setBusy(false);
+    fail(String(err.message || err));
+  }
+});
+
+$("clear").addEventListener("click", () => { turns = []; render(); setBusy(false, ""); });
+
+$("regen").addEventListener("click", () => {
+  if (busy || !turns.length) return;
+  // Drop trailing bot turns so the same user message is answered again.
+  while (turns.length && turns[turns.length - 1].role === "bot") turns.pop();
+  if (!turns.length) return render();
+  stream();
+});
+
+$("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("input").value.trim();
+  if (!text || busy) return;
+  $("input").value = "";
+  turns.push({ role: "user", text });
+  render();
+  stream();
+});
+
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    $("form").requestSubmit();
+  }
+});
+
+async function stream() {
+  setBusy(true, "generating…");
+  turns.push({ role: "bot", text: "" });
+  const node = render();
+  node.classList.add("cursor");
+
+  let r;
+  try {
+    r = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turns: turns.slice(0, -1), ...opts() }),
+    });
+  } catch (err) {
+    node.classList.remove("cursor");
+    setBusy(false); fail("request failed: " + err);
+    return;
+  }
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    turns.pop(); render();
+    setBusy(false); fail(d.error || `HTTP ${r.status}`);
+    return;
+  }
+
+  // Server-sent events, parsed by hand: EventSource cannot POST.
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop();
+    for (const part of parts) {
+      if (!part.startsWith("data:")) continue;
+      const ev = JSON.parse(part.slice(5));
+      if (ev.error) { node.classList.remove("cursor"); setBusy(false); fail(ev.error); return; }
+      if (ev.done) {
+        node.classList.remove("cursor");
+        setBusy(false, ev.reason === "limit" ? "hit the token limit" : "");
+        return;
+      }
+      turns[turns.length - 1].text += ev.content;
+      node.textContent = turns[turns.length - 1].text;
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+  node.classList.remove("cursor");
+  setBusy(false);
+}
+
+loadModels().then(render).catch((e) => fail("could not list models: " + e));
+</script>
+</body>
+</html>

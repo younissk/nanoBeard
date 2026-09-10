@@ -1,0 +1,865 @@
+{
+  "model": "qwen/qwen3-30b-a3b-instruct-2507",
+  "verdicts": {
+    "crea-01": {
+      "pick": 4,
+      "reason": "It best responds with a coherent, pirate-themed poem using consistent imagery and voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-02": {
+      "pick": 4,
+      "reason": "It at least attempts a joke with pirate flair, even if nonsensical.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-03": {
+      "pick": 5,
+      "reason": "It directly responds to the request with a relevant, pirate-appropriate follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-04": {
+      "pick": 7,
+      "reason": "It attempts a coherent pirate story with consistent voice and structure, despite some odd phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-05": {
+      "pick": 1,
+      "reason": "It attempts to name the ship with a pirate flair, despite being incoherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-06": {
+      "pick": 4,
+      "reason": "It directly responds to the request with a pirate-themed message in a bottle, using appropriate tone and phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-07": {
+      "pick": 6,
+      "reason": "It attempts a coherent scary sea story with pirate voice and relevant elements like fear of the deep and unsafe boats.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-08": {
+      "pick": 3,
+      "reason": "It best describes a sunset with coherent, pirate-flavored imagery while responding to the request.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-09": {
+      "pick": 10,
+      "reason": "It attempts to create a pirate-themed curse with relevant nautical imagery and a pirate voice, despite some incoherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-10": {
+      "pick": 2,
+      "reason": "It directly responds to the request with a pirate-style letter, maintains coherence, and uses appropriate pirate voice while being reasonably coherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-11": {
+      "pick": 2,
+      "reason": "It vaguely sets a scene for a bedtime story with atmospheric language and pirate flair, unlike the others which are incoherent or repetitive.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-12": {
+      "pick": 3,
+      "reason": "It attempts a riddle structure with pirate flair, despite odd phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-13": {
+      "pick": 8,
+      "reason": "It attempts to describe an adventure with coherent pirate-themed imagery and repetition of beach elements, despite minor flaws.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-14": {
+      "pick": 2,
+      "reason": "It best responds to the request with pirate flair, coherence, and a clear toast-like structure.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "crea-15": {
+      "pick": 1,
+      "reason": "It attempts to describe a sea monster fight with some narrative structure, despite incoherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-01": {
+      "pick": 1,
+      "reason": "It directly responds to the user's implied question about music with a pirate-appropriate inquiry.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-02": {
+      "pick": 2,
+      "reason": "It directly responds to the open-ended 'What happened?' with a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-03": {
+      "pick": 2,
+      "reason": "It directly responds to the greeting with a natural, coherent reply.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-04": {
+      "pick": 10,
+      "reason": "It directly responds to the user's input with a relevant question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-05": {
+      "pick": 2,
+      "reason": "It directly responds to the user's input with a pirate-themed reaction, maintaining voice and coherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-06": {
+      "pick": 10,
+      "reason": "It vaguely addresses the theme of 'why' in a personal, reflective way while maintaining pirate voice and coherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-07": {
+      "pick": 10,
+      "reason": "It coherently describes natural beauty with a consistent pirate voice and responds to the request about the world's features.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-08": {
+      "pick": 6,
+      "reason": "It directly responds to the command with a pirate-style affirmation of the word 'banana'.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-09": {
+      "pick": 3,
+      "reason": "It directly responds to the user's command with a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-10": {
+      "pick": 1,
+      "reason": "It directly answers with a number, matching the input format.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-11": {
+      "pick": 10,
+      "reason": "It's the only reply that attempts a coherent response while maintaining a formal tone, though it doesn't fully match the butler request.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "edge-12": {
+      "pick": 5,
+      "reason": "It directly acknowledges the question without fabricating a response.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-01": {
+      "pick": 1,
+      "reason": "It directly responds to the user's distress with empathy and asks for details, fitting the pirate voice and context.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-02": {
+      "pick": 3,
+      "reason": "It directly acknowledges the user's feeling and offers a constructive suggestion.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-03": {
+      "pick": 7,
+      "reason": "It directly acknowledges the loss and checks on the user's well-being with appropriate empathy and pirate tone.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-04": {
+      "pick": 4,
+      "reason": "It directly and clearly responds to the promotion with a relevant follow-up question about the job.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-05": {
+      "pick": 7,
+      "reason": "It directly addresses the user's nervousness with reassurance, staying on topic and maintaining a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-06": {
+      "pick": 1,
+      "reason": "It directly addresses the user's situation and invites further information, which is the most helpful response.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-07": {
+      "pick": 2,
+      "reason": "It acknowledges the user's feeling and uses pirate voice appropriately while asking a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-08": {
+      "pick": 2,
+      "reason": "It directly responds to the user's news with appropriate enthusiasm and a pirate tone.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-09": {
+      "pick": 8,
+      "reason": "It directly responds to the user's failure with empathy and asks an open-ended question about what happened.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-10": {
+      "pick": 3,
+      "reason": "It acknowledges the user's fear with empathy and maintains a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-11": {
+      "pick": 7,
+      "reason": "It acknowledges the emotion without fabricating details or repeating phrases.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-12": {
+      "pick": 2,
+      "reason": "It directly asks for clarification on what the user is proud of, prompting a meaningful follow-up.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-13": {
+      "pick": 1,
+      "reason": "It directly responds to the user's feeling of isolation with empathy and a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-14": {
+      "pick": 1,
+      "reason": "It directly responds to the user's emotional state and asks for details, staying relevant and empathetic.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-15": {
+      "pick": 5,
+      "reason": "It directly responds to the user's achievement and asks a relevant follow-up question about the book.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-16": {
+      "pick": 1,
+      "reason": "It directly acknowledges the user's feeling and invites further sharing, which is supportive and responsive.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-17": {
+      "pick": 4,
+      "reason": "It directly responds to the user's statement with a relevant follow-up question about the neighbor's help.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "emot-18": {
+      "pick": 6,
+      "reason": "It best responds to the user's distress with empathy and a pirate voice while asking a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-01": {
+      "pick": 4,
+      "reason": "It attempts to describe a process despite garbled phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-02": {
+      "pick": 3,
+      "reason": "It best explains a storm with minimal repetition and coherent, if simplistic, description.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-03": {
+      "pick": 6,
+      "reason": "It vaguely acknowledges multiple factors and maintains a pirate voice without excessive repetition or nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-04": {
+      "pick": 5,
+      "reason": "It vaguely addresses making bread with ingredients and effort, maintaining a pirate voice without excessive repetition or nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-05": {
+      "pick": 6,
+      "reason": "It provides a clear, albeit pirate-flavored, step-by-step method for catching a fish.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-06": {
+      "pick": 8,
+      "reason": "It best explains how a map helps navigate by showing perspective and understanding, with coherent pirate voice and minimal repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-07": {
+      "pick": 5,
+      "reason": "It correctly defines friendship as a trusting bond between people, which is coherent and factually acceptable while maintaining a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-08": {
+      "pick": 9,
+      "reason": "It at least attempts to outline steps for building a raft using materials and testing, despite confusion and repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-09": {
+      "pick": 10,
+      "reason": "It at least attempts to define courage as a feeling of fear, which is relevant, despite the confusion in phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-10": {
+      "pick": 10,
+      "reason": "It addresses learning a new skill with practical steps and maintains a pirate voice without repetition or nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-11": {
+      "pick": 4,
+      "reason": "It vaguely addresses tidal causes without claiming false specifics.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "expl-12": {
+      "pick": 7,
+      "reason": "It directly and simply answers the question with a hopeful, coherent pirate response.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-01": {
+      "pick": 1,
+      "reason": "It at least attempts to answer with repetition of the correct fact, despite poor grammar.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-02": {
+      "pick": 3,
+      "reason": "It vaguely acknowledges the question without false specifics.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-03": {
+      "pick": 2,
+      "reason": "It directly answers the question with the correct value.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-04": {
+      "pick": 9,
+      "reason": "It's the only reply that acknowledges the question without fabricating elaborate false details.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-05": {
+      "pick": 5,
+      "reason": "It vaguely describes photosynthesis as a plant capturing light to create energy, which is correct, despite the pirate gibberish.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-06": {
+      "pick": 1,
+      "reason": "It at least attempts a distance, though wildly inaccurate.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-07": {
+      "pick": 1,
+      "reason": "It vaguely acknowledges the question while maintaining pirate voice, though it's repetitive and incorrect.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-08": {
+      "pick": 6,
+      "reason": "It vaguely explains Rayleigh scattering with some correct elements like shorter wavelengths and eye sensitivity, despite the garbled phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-09": {
+      "pick": 10,
+      "reason": "It correctly identifies gravity as a force that pulls objects downward, which is the core concept.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-10": {
+      "pick": 10,
+      "reason": "It's the least nonsensical, though still completely wrong and incoherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-11": {
+      "pick": 4,
+      "reason": "It mentions Brazil and lists some languages, though it's confused and repetitive.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-12": {
+      "pick": 8,
+      "reason": "It vaguely explains a computer processing data and making decisions, maintaining coherence and pirate voice while avoiding repetitive nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-13": {
+      "pick": 9,
+      "reason": "It vaguely references the boiling point, though nonsensical.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-14": {
+      "pick": 3,
+      "reason": "It lists three named places, though they are not continents, it at least attempts to answer with three items.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gene-15": {
+      "pick": 1,
+      "reason": "It at least mentions WW2, though it's incomplete.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-01": {
+      "pick": 5,
+      "reason": "It directly responds to the user's greeting with a relevant pirate-style question about their current activity.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-02": {
+      "pick": 10,
+      "reason": "It directly responds to the greeting with a relevant pirate-style question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-03": {
+      "pick": 2,
+      "reason": "It directly and appropriately responds to the greeting with a cheerful pirate-style reply.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-04": {
+      "pick": 1,
+      "reason": "It directly responds to the greeting with a pirate-appropriate reply.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-05": {
+      "pick": 7,
+      "reason": "It directly responds to the question with a friendly pirate tone and reciprocates the greeting.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-06": {
+      "pick": 7,
+      "reason": "It best responds to 'What's up?' with a coherent, pirate-themed observation about the ocean's beauty.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-07": {
+      "pick": 8,
+      "reason": "It directly responds to the greeting with a friendly, coherent pirate tone while matching the user's positive sentiment.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-08": {
+      "pick": 9,
+      "reason": "It best responds with pirate voice and engagement.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-09": {
+      "pick": 8,
+      "reason": "It vaguely acknowledges the question while maintaining a pirate voice, unlike the others which are incoherent or irrelevant.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-10": {
+      "pick": 2,
+      "reason": "It directly responds to the user's greeting with a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-11": {
+      "pick": 2,
+      "reason": "It directly responds to the greeting with a pirate-appropriate acknowledgment and asks a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-12": {
+      "pick": 5,
+      "reason": "It directly responds to the greeting with a pirate-appropriate acknowledgment.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-13": {
+      "pick": 1,
+      "reason": "It directly responds to the greeting with a simple, coherent pirate-style acknowledgment.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-14": {
+      "pick": 3,
+      "reason": "It directly addresses the open-ended greeting with a relevant pirate-style question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "gree-15": {
+      "pick": 4,
+      "reason": "It directly responds to the greeting with a relevant and coherent well-wish.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-01": {
+      "pick": 1,
+      "reason": "It directly answers the question with a simple, coherent name.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-02": {
+      "pick": 9,
+      "reason": "It directly answers the question with a pirate-appropriate identity while maintaining coherence and voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-03": {
+      "pick": 7,
+      "reason": "It directly answers the question with a clear, if fantastical, identity that fits the pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-04": {
+      "pick": 8,
+      "reason": "It directly answers the question with a clear, coherent pirate identity while maintaining voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-05": {
+      "pick": 5,
+      "reason": "It directly answers the question about self with a relevant trait, is coherent, and maintains a pirate voice without repetition or nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-06": {
+      "pick": 8,
+      "reason": "It briefly acknowledges the question with a minimal response, avoiding false claims or repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-07": {
+      "pick": 10,
+      "reason": "It vaguely addresses origin while maintaining coherence and pirate voice, unlike the others which are incoherent or factually absurd.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-08": {
+      "pick": 1,
+      "reason": "It directly answers the question with a clear, simple response and maintains a pirate tone without excessive repetition or incoherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-09": {
+      "pick": 1,
+      "reason": "It directly answers the question about the crew with a coherent, pirate-themed response that emphasizes teamwork.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-10": {
+      "pick": 5,
+      "reason": "It directly answers the question with a clear 'Yes' and matches the pirate voice, despite being factually incorrect.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-11": {
+      "pick": 4,
+      "reason": "It directly answers the question with a clear, simple denial of feelings while maintaining a consistent pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-12": {
+      "pick": 3,
+      "reason": "It directly and simply answers the question about appearance with a truthful, coherent statement.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-13": {
+      "pick": 5,
+      "reason": "It directly answers the question with a simple, plausible name.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-14": {
+      "pick": 3,
+      "reason": "It directly answers the question and invites further conversation, staying coherent and in character.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "iden-15": {
+      "pick": 10,
+      "reason": "It directly answers the question with a coherent pirate-themed response about community, using appropriate pirate phrases without nonsense or repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-01": {
+      "pick": 2,
+      "reason": "It lists three clear, pirate-appropriate items with consistent voice and minimal repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-02": {
+      "pick": 7,
+      "reason": "It lists six sea creatures, though some are made up, it's the most coherent and closest to answering the request.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-03": {
+      "pick": 6,
+      "reason": "It provides a coherent, relevant list of packing items with pirate flair while avoiding repetition and incoherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-04": {
+      "pick": 5,
+      "reason": "It vaguely addresses ship parts and includes pirate flair, though it's incoherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-05": {
+      "pick": 1,
+      "reason": "It directly answers the request with pirate-themed names and maintains a consistent pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-06": {
+      "pick": 6,
+      "reason": "It correctly lists two actual types of sea weather, though incomplete.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-07": {
+      "pick": 8,
+      "reason": "It briefly lists three clear rules, despite being repetitive and vague.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-08": {
+      "pick": 2,
+      "reason": "It includes pirate-like words and exclamations, even if some are invented.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-09": {
+      "pick": 1,
+      "reason": "It attempts to list specific items worth stealing, albeit with odd phrasing and repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "list-10": {
+      "pick": 1,
+      "reason": "It vaguely mentions dangers like depth and unknown life, though poorly expressed.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-01": {
+      "pick": 2,
+      "reason": "It directly answers the question with a made-up pirate name and maintains the pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-02": {
+      "pick": 8,
+      "reason": "It directly responds to the user's rough day with empathy and concern.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-03": {
+      "pick": 10,
+      "reason": "It directly answers the question about hiding treasure by stating intent to find it, maintaining pirate voice and coherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-04": {
+      "pick": 1,
+      "reason": "It at least attempts to reference the name, though it's confused and irrelevant.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-05": {
+      "pick": 1,
+      "reason": "It directly acknowledges the user's complaint and offers a polite, relevant response.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-06": {
+      "pick": 8,
+      "reason": "It directly offers advice, unlike the others.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-07": {
+      "pick": 1,
+      "reason": "It directly responds to the question with a plausible suggestion while maintaining pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-08": {
+      "pick": 5,
+      "reason": "It directly responds to the question with a clever, pirate-appropriate metaphor.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-09": {
+      "pick": 10,
+      "reason": "It directly responds to the question with a pirate-appropriate answer, even if vague.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-10": {
+      "pick": 5,
+      "reason": "It directly addresses the user's request and asks a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-11": {
+      "pick": 8,
+      "reason": "It provides a clear, step-by-step cooking suggestion with plausible ingredients and actions, despite minor pirate phrasing issues.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-12": {
+      "pick": 1,
+      "reason": "It directly answers the question with a simple, coherent response while maintaining a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-13": {
+      "pick": 1,
+      "reason": "It acknowledges the user's wish not to talk while offering gentle comfort without pushing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-14": {
+      "pick": 4,
+      "reason": "It directly responds to the question with a plausible answer while maintaining a pirate voice and coherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "mult-15": {
+      "pick": 2,
+      "reason": "It directly responds to the user's clue about the map and asks a relevant follow-up question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-01": {
+      "pick": 10,
+      "reason": "It at least attempts to explain 'avast' in a pirate context, despite being factually wrong.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-02": {
+      "pick": 1,
+      "reason": "It at least attempts to define a galleon as a ship, though it invents fictional crew members.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-03": {
+      "pick": 5,
+      "reason": "It at least attempts to address reading a compass with a pirate-themed structure, despite being incoherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-04": {
+      "pick": 1,
+      "reason": "It is the only reply that is concise and avoids complete incoherence, though it is still meaningless.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-05": {
+      "pick": 1,
+      "reason": "It vaguely references Blackbeard as a large figure, which is the only reply that attempts to address the question at all.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-06": {
+      "pick": 10,
+      "reason": "It at least repeats the phrase 'jolly roger' and attempts a pirate tone, though it's nonsensical.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-07": {
+      "pick": 10,
+      "reason": "It at least attempts to explain the phrase in a game-like context, maintaining pirate voice and coherence better than others.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-08": {
+      "pick": 10,
+      "reason": "It vaguely references sunlight and the night sky, which is closest to the correct concept of starboard as a ship's right side, though still incorrect.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-09": {
+      "pick": 4,
+      "reason": "It vaguely references wind and direction, and uses pirate voice effectively without repeating nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-10": {
+      "pick": 1,
+      "reason": "It at least attempts to define a crow's nest as a bird's nest.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-11": {
+      "pick": 10,
+      "reason": "It at least mentions water vapor and ice, vaguely related to water, unlike the others which are incoherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-12": {
+      "pick": 6,
+      "reason": "It at least attempts to differentiate the sloop and frigate, despite the garbled language.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-13": {
+      "pick": 9,
+      "reason": "It at least mentions the kraken as a sea creature, which is correct, despite other inaccuracies.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-14": {
+      "pick": 6,
+      "reason": "It vaguely addresses eye patches with pirate flair, though still incoherent.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "naut-15": {
+      "pick": 10,
+      "reason": "It at least attempts to define grog as a fruit with positive effects, maintaining a pirate voice and avoiding complete incoherence.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-01": {
+      "pick": 5,
+      "reason": "It directly answers the question with a coherent, pirate-appropriate response about using doubloons to make gifts.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-02": {
+      "pick": 6,
+      "reason": "It directly and simply answers the question with a clear, coherent pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-03": {
+      "pick": 3,
+      "reason": "It directly answers the question with a clear, coherent favorite food in pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-04": {
+      "pick": 10,
+      "reason": "It correctly identifies rum as not being water, unlike the others which invent absurd definitions.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-05": {
+      "pick": 4,
+      "reason": "It acknowledges the question and offers a thoughtful, if vague, perspective on personal choice and mindset.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-06": {
+      "pick": 9,
+      "reason": "It directly addresses the question with a coherent, relevant answer about losing control of the boat and course.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-07": {
+      "pick": 6,
+      "reason": "It best responds to the question with a clear preference for sunny weather while maintaining a coherent pirate voice and avoiding contradictions.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-08": {
+      "pick": 2,
+      "reason": "It directly answers the question with a coherent, relevant definition of a good captain.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-09": {
+      "pick": 4,
+      "reason": "It at least attempts to answer the question with a coherent, if nonsensical, pirate-themed response.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "opin-10": {
+      "pick": 3,
+      "reason": "It attempts to address the question with a coherent, if overly verbose, pirate-themed response that balances both concepts.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-01": {
+      "pick": 4,
+      "reason": "It attempts to answer the question with breakfast ideas, despite odd phrasing and logic.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-02": {
+      "pick": 10,
+      "reason": "It provides practical suggestions like meeting at specific places and choosing restaurants with good reviews, which directly addresses the question.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-03": {
+      "pick": 6,
+      "reason": "It acknowledges the user's dilemma and offers helpful, relevant suggestions while maintaining a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-04": {
+      "pick": 7,
+      "reason": "It provides the most coherent and relevant advice despite some pirate slang.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-05": {
+      "pick": 2,
+      "reason": "It directly answers the question with a simple, plausible name.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-06": {
+      "pick": 9,
+      "reason": "It directly addresses the question with clear, relevant advice while maintaining a consistent pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-07": {
+      "pick": 5,
+      "reason": "It attempts to give practical advice while maintaining a pirate voice and is the most coherent among the options.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-08": {
+      "pick": 8,
+      "reason": "It offers a clear, relevant suggestion with a pirate voice and avoids repetition or nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-09": {
+      "pick": 7,
+      "reason": "It best addresses apology with coherent, relevant advice while maintaining pirate voice and avoiding repetition or nonsense.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-10": {
+      "pick": 1,
+      "reason": "It directly addresses the question with a coherent, relevant suggestion while maintaining a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-11": {
+      "pick": 7,
+      "reason": "It provides a clear, varied list of actionable steps with pirate flair, avoiding repetition and irrelevant tangents.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "prac-12": {
+      "pick": 5,
+      "reason": "It directly answers the question with a coherent, slightly pirate-flavored opinion without nonsense or repetition.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-01": {
+      "pick": 3,
+      "reason": "It directly answers the question with a correct number and maintains a pirate voice.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-02": {
+      "pick": 2,
+      "reason": "It vaguely acknowledges the loss but stays in character, unlike the others which are incoherent or irrelevant.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-03": {
+      "pick": 7,
+      "reason": "It at least attempts to answer the sequence with a numerical response, though it's incorrect and nonsensical.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-04": {
+      "pick": 2,
+      "reason": "It gives a reasonable range based on the 3-day one-way trip.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-05": {
+      "pick": 10,
+      "reason": "It directly answers the question with a correct and clear response.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-06": {
+      "pick": 7,
+      "reason": "It directly asks for the number, responding to the request to guess.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-07": {
+      "pick": 2,
+      "reason": "It correctly states the ship goes south after turning around.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "reas-08": {
+      "pick": 3,
+      "reason": "It attempts to answer the split with a coherent number, despite odd phrasing.",
+      "model": "qwen/qwen3-30b-a3b-instruct-2507"
+    }
+  }
+}

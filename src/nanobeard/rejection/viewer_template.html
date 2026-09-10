@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>nanoBeard · rejection sampling</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --plane:    #0d0d0d;
+    --surface:  #1a1a19;
+    --raised:   #201f1e;
+    --ink:      #ffffff;
+    --ink-2:    #c3c2b7;
+    --muted:    #898781;
+    --line:     rgba(255,255,255,0.09);
+    --accent:   #3987e5;
+    --bub:      #172538;
+    --bub-line: #2a4a6e;
+    --good:     #0ca30c;
+    --critical: #d03b3b;
+    --warning:  #fab219;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --plane:    #f7f7f4;
+    --surface:  #ffffff;
+    --raised:   #ffffff;
+    --ink:      #0b0b0b;
+    --ink-2:    #3d3c39;
+    --muted:    #898781;
+    --line:     rgba(11,11,11,0.10);
+    --accent:   #2a78d6;
+    --bub:      #eaf2fd;
+    --bub-line: #bcd8f7;
+    --good:     #0ca30c;
+    --critical: #d03b3b;
+    --warning:  #b07d09;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body {
+    margin: 0; background: var(--plane); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 17px; line-height: 1.6;
+  }
+
+  /* ---------------- header ---------------- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 28px;
+    background: color-mix(in oklab, var(--plane) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+  .runmeta { font-size: 12px; color: var(--muted); }
+  .grow { flex: 1; }
+  button {
+    font: inherit; font-size: 13px; color: var(--ink-2);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 11px; cursor: pointer;
+  }
+  button:hover { background: var(--surface); color: var(--ink); }
+  button.solid { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.solid:hover { filter: brightness(1.1); }
+  .pos { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 84px; text-align: center; }
+
+  /* ---------------- reading column ---------------- */
+  main { max-width: 1360px; margin: 0 auto; padding: 32px 28px 96px; }
+  .head { max-width: 860px; }   /* eyebrow + history + bubble keep a sane measure */
+
+  .eyebrow {
+    font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px;
+  }
+
+  /* prior turns, kept quiet so the live question dominates */
+  .history { margin-bottom: 20px; display: grid; gap: 10px; }
+  .h-turn { font-size: 15px; color: var(--muted); line-height: 1.55; }
+  .h-turn b { font-weight: 600; color: var(--ink-2); font-size: 12px;
+              text-transform: uppercase; letter-spacing: 0.06em; margin-right: 8px; }
+
+  /* the question — the loudest thing on the page */
+  .bubble {
+    position: relative;
+    background: var(--bub);
+    border-radius: 22px;
+    padding: 28px 32px;
+    font-size: 29px; line-height: 1.3;
+    font-weight: 500; letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .bubble.empty { color: var(--muted); font-style: italic; font-weight: 400; }
+  /* Tail: a clipped triangle, not a rotated square — a pseudo-element always
+     paints above its parent's background, so a rotated square's top half
+     stays visible and reads as a floating diamond. Overlaps 2px upward so
+     it fuses with the bubble. */
+  .bubble::after {
+    content: ""; position: absolute; left: 36px; bottom: -11px;
+    width: 22px; height: 13px; background: var(--bub);
+    clip-path: polygon(0 0, 100% 0, 22% 100%);
+  }
+
+  .divider {
+    display: flex; align-items: center; gap: 14px;
+    margin: 26px 0 14px; color: var(--muted); font-size: 12px;
+    letter-spacing: 0.07em; text-transform: uppercase;
+  }
+  .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .divider .judge-btn { text-transform: none; letter-spacing: 0; }
+  .verdict {
+    margin: 0 0 16px; padding: 11px 15px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-2); line-height: 1.5;
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+  .verdict.jump { cursor: pointer; }
+  .verdict.jump:hover { border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+  .verdict .go { color: var(--accent); white-space: nowrap; }
+  @keyframes flash { from { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 55%, transparent); } }
+  .card.flash { animation: flash 1s ease-out; }
+  .verdict.err { border-color: color-mix(in oklab, var(--critical) 45%, transparent); }
+  .verdict code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    background: var(--plane); padding: 1px 6px; border-radius: 4px;
+  }
+  .card.pick { border-color: color-mix(in oklab, var(--accent) 70%, transparent); }
+  .badge {
+    display: inline-block; font-size: 10.5px; letter-spacing: 0.05em;
+    text-transform: uppercase; font-weight: 600; color: #fff;
+    background: var(--accent); border-radius: 999px; padding: 2px 8px;
+    margin-bottom: 10px;
+  }
+
+  /* ---------------- answer cards ---------------- */
+  /* Masonry via CSS columns, not grid: replies run 2-120 tokens, and a real
+     grid would size every row to its tallest card, leaving big holes. Columns
+     flow top-to-bottom then wrap, so the numbers (01..10) carry the order. */
+  .cards { column-gap: 16px; }
+  .cards.grid { columns: 3; }
+  .cards.list { columns: 1; max-width: 820px; }
+  .card { break-inside: avoid; margin-bottom: 16px;
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px 26px 16px;
+    transition: border-color .12s ease, opacity .12s ease;
+  }
+  .card:hover { border-color: color-mix(in oklab, var(--ink) 18%, transparent); }
+  .card.keep   { border-color: color-mix(in oklab, var(--good) 60%, transparent); }
+  .card.reject { border-color: color-mix(in oklab, var(--critical) 45%, transparent); opacity: .5; }
+  .card.reject:hover { opacity: .8; }
+
+  .card .body {
+    font-size: 18px; line-height: 1.62; white-space: pre-wrap;
+    letter-spacing: -0.003em; color: var(--ink);
+  }
+  .grid-mode .bubble { font-size: 25px; padding: 22px 26px; border-radius: 18px; }
+  .cards.grid .card { padding: 18px 20px 12px; border-radius: 14px; }
+  .cards.grid .card .body { font-size: 15.5px; line-height: 1.55; }
+  /* Only the long tail gets clamped — most replies are well under this.
+     Never silently: the card grows a "show all" toggle when it clips. */
+  .cards.grid .body.clamp {
+    display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 10; overflow: hidden;
+  }
+  .more {
+    margin-top: 8px; font-size: 12px; color: var(--accent);
+    background: none; border: 0; padding: 0; cursor: pointer;
+  }
+  .more:hover { text-decoration: underline; background: none; }
+  .cards.grid .foot { margin-top: 12px; padding-top: 10px; }
+  .card .body.empty { color: var(--muted); font-style: italic; }
+
+  .foot {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px; row-gap: 8px;
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--muted);
+  }
+  .foot > span { white-space: nowrap; }   /* wrap as units, never mid-phrase */
+  .num {
+    font-variant-numeric: tabular-nums; font-weight: 600;
+    color: var(--muted); font-size: 12px;
+  }
+  .trunc { color: var(--warning); }
+  .acts { margin-left: auto; display: flex; gap: 6px; }
+  .acts button { font-size: 12px; padding: 3px 10px; border-radius: 6px; }
+  .acts button[aria-pressed="true"].k { background: var(--good); border-color: var(--good); color: #fff; }
+  .acts button[aria-pressed="true"].r { background: var(--critical); border-color: var(--critical); color: #fff; }
+
+  /* ---------------- footer nav ---------------- */
+  .navbar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 12px 28px;
+    background: color-mix(in oklab, var(--plane) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+  }
+  .navbar .hint { font-size: 12px; color: var(--muted); }
+  kbd {
+    font: inherit; font-size: 11px; border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--ink-2);
+  }
+  @media (min-width: 1560px) { .cards.grid { columns: 4; } }
+  @media (max-width: 1120px) { .cards.grid { columns: 2; } }
+  @media (max-width: 760px)  { .cards.grid { columns: 1; } .cards.grid .card .body { font-size: 17px; } }
+  @media (max-width: 620px) {
+    header { padding: 12px 16px; gap: 10px; }
+    #runmeta { display: none; }          /* wraps into a tall column otherwise */
+    main { padding: 32px 18px 130px; }
+    .bubble { font-size: 23px; padding: 22px 24px; }
+    .card { padding: 18px 20px 14px; }
+    .card .body { font-size: 17px; }
+    .navbar .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<script id="payload" type="application/json">/*__DATA__*/null</script>
+<script>
+const DATA = JSON.parse(document.getElementById('payload').textContent);
+const LSKEY = 'nb-rej:' + DATA.run;
+let marks = JSON.parse(localStorage.getItem(LSKEY) || '{}');
+let cur = +(localStorage.getItem(LSKEY + ':pos') || 0);
+let layout = localStorage.getItem('nb-rej:layout') || 'grid';
+const JKEY = LSKEY + ':verdicts';
+// Baked-in verdicts (from `judge --all`) merged with any fetched live. Cached so
+// re-visiting a prompt never re-bills the API.
+let verdicts = Object.assign({}, DATA.verdicts || {}, JSON.parse(localStorage.getItem(JKEY) || '{}'));
+const JUDGE_URL = 'http://127.0.0.1:8900';
+let judging = false;
+
+const $ = s => document.querySelector(s);
+const el = (t, c, txt) => { const n = document.createElement(t); if (c) n.className = c; if (txt != null) n.textContent = txt; return n; };
+const key = (pid, i) => pid + ':' + i;
+const save = () => localStorage.setItem(LSKEY, JSON.stringify(marks));
+const savePos = () => localStorage.setItem(LSKEY + ':pos', String(cur));
+
+function render() {
+  const P = DATA.prompts;
+  cur = Math.max(0, Math.min(cur, P.length - 1));
+  const p = P[cur];
+  const m = $('#main'); m.innerHTML = '';
+  const head = el('div', 'head');
+  m.append(head);
+
+  head.append(el('div', 'eyebrow', `${p.category} · ${p.id}`));
+
+  // everything before the final user turn, kept visually quiet
+  const hist = p.turns.slice(0, -1);
+  if (hist.length) {
+    const h = el('div', 'history');
+    for (const t of hist) {
+      const row = el('div', 'h-turn');
+      row.append(el('b', null, t.role === 'user' ? 'You' : 'Pirate'),
+                 document.createTextNode(t.text));
+      h.append(row);
+    }
+    head.append(h);
+  }
+
+  const last = p.turns[p.turns.length - 1].text;
+  head.append(el('div', 'bubble' + (last.trim() ? '' : ' empty'), last.trim() || 'empty prompt'));
+
+  const kept = p.samples.filter(s => marks[key(p.id, s.i)] === 'keep').length;
+  const div = el('div', 'divider', `${p.samples.length} replies${kept ? ` · ${kept} kept` : ''}`);
+  const jb = el('button', 'judge-btn', judging ? 'asking…' : (verdicts[p.id] ? 'ask again' : 'ask qwen'));
+  jb.disabled = judging;
+  jb.onclick = () => askJudge(p);
+  div.append(jb);
+  m.append(div);
+
+  const v = verdicts[p.id];
+  if (v) {
+    const box = el('div', 'verdict' + (v.pick ? '' : ' err'));
+    if (v.pick) {
+      box.append(el('b', null, `Qwen picked #${String(v.pick).padStart(2, '0')}`),
+                 document.createTextNode(' — ' + (v.reason || '')));
+      if (v.votes) box.append(el('span', null, `  (${v.votes} votes)`));
+      box.append(document.createTextNode(' '), el('span', 'go', 'jump to it →'));
+      box.classList.add('jump');
+      box.onclick = () => {
+        const c = document.querySelector('.card.pick');
+        if (!c) return;
+        c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+      };
+    } else if (v.offline) {
+      box.append(el('b', null, 'Judge not running.'),
+                 document.createTextNode(' Start it with '));
+      box.append(el('code', null, 'make judge'));
+      box.append(document.createTextNode(' in another terminal, then try again.'));
+    } else {
+      box.append(el('b', null, 'No pick.'), document.createTextNode(' ' + (v.reason || '')));
+    }
+    if (v.model) { box.append(el('span', null, '  ')); box.append(el('code', null, v.model)); }
+    m.append(box);
+  }
+
+  m.className = layout === 'grid' ? 'grid-mode' : '';
+  const cards = el('div', 'cards ' + layout);
+  for (const s of p.samples) {
+    const k = key(p.id, s.i), mk = marks[k];
+    const isPick = v && v.pick === s.i + 1;
+    const c = el('div', 'card' + (mk === 'keep' ? ' keep' : mk === 'reject' ? ' reject' : '') + (isPick ? ' pick' : ''));
+    if (isPick) c.append(el('div', 'badge', "qwen's pick"));
+    const txt = s.text.trim();
+    const body = el('div', 'body' + (txt ? '' : ' empty') + (layout === 'grid' ? ' clamp' : ''), txt || 'empty completion');
+    c.append(body);
+
+    const foot = el('div', 'foot');
+    foot.append(el('span', 'num', String(s.i + 1).padStart(2, '0')));
+    foot.append(el('span', null, `${s.n} tokens`));
+    if (s.stop === 'limit') foot.append(el('span', 'trunc', 'truncated'));
+
+    const acts = el('div', 'acts');
+    const kb = el('button', 'k', 'keep'), rb = el('button', 'r', 'reject');
+    kb.setAttribute('aria-pressed', String(mk === 'keep'));
+    rb.setAttribute('aria-pressed', String(mk === 'reject'));
+    kb.onclick = () => toggle(k, 'keep');
+    rb.onclick = () => toggle(k, 'reject');
+    acts.append(kb, rb);
+    foot.append(acts);
+    c.append(foot);
+    cards.append(c);
+  }
+  m.append(cards);
+
+  // Reveal the toggle only on cards the clamp actually clipped.
+  if (layout === 'grid') {
+    for (const body of cards.querySelectorAll('.body.clamp')) {
+      if (body.scrollHeight - body.clientHeight < 4) { body.classList.remove('clamp'); continue; }
+      const btn = el('button', 'more', 'show all');
+      btn.onclick = () => {
+        const on = body.classList.toggle('clamp');
+        btn.textContent = on ? 'show all' : 'show less';
+      };
+      body.after(btn);
+    }
+  }
+
+  $('#pos').textContent = `${cur + 1} / ${P.length}`;
+  const n = Object.values(marks).filter(v => v === 'keep').length;
+  const r = Object.values(marks).filter(v => v === 'reject').length;
+  $('#tally').textContent = n || r ? `${n} kept · ${r} rejected` : '';
+  $('#prev').disabled = cur === 0;
+  $('#next').disabled = cur === P.length - 1;
+  savePos();
+}
+
+function toggle(k, val) {
+  marks[k] = marks[k] === val ? undefined : val;
+  if (!marks[k]) delete marks[k];
+  save(); render();
+}
+const go = d => { cur += d; window.scrollTo({ top: 0 }); render(); };
+
+async function askJudge(p) {
+  judging = true; render();
+  let v;
+  try {
+    const res = await fetch(JUDGE_URL + '/judge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turns: p.turns, candidates: p.samples.map(s => s.text) }),
+    });
+    v = res.ok ? await res.json() : { pick: null, reason: 'judge returned HTTP ' + res.status };
+  } catch (e) {
+    // fetch() rejects on connection refused — the server almost certainly isn't up.
+    v = { pick: null, offline: true };
+  }
+  verdicts[p.id] = v;
+  // Only persist real verdicts; an offline blip shouldn't stick.
+  if (!v.offline) {
+    const cache = JSON.parse(localStorage.getItem(JKEY) || '{}');
+    cache[p.id] = v;
+    localStorage.setItem(JKEY, JSON.stringify(cache));
+  }
+  judging = false; render();
+}
+
+function exportJSONL() {
+  const lines = [];
+  for (const p of DATA.prompts) for (const s of p.samples) {
+    const v = marks[key(p.id, s.i)];
+    if (!v) continue;
+    lines.push(JSON.stringify({ id: p.id, category: p.category, sample: s.i, seed: s.seed,
+      turns: p.turns, prompt: p.prompt, completion: s.text, n_tokens: s.n,
+      stop_type: s.stop, label: v, model: DATA.model, params: DATA.params,
+      judge_pick: (verdicts[p.id] || {}).pick === s.i + 1 || undefined }));
+  }
+  if (!lines.length) { alert('Nothing marked yet.'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'application/x-ndjson' }));
+  a.download = DATA.run + '.labelled.jsonl';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'j' || e.key === 'ArrowRight') { go(1); e.preventDefault(); }
+  else if (e.key === 'k' || e.key === 'ArrowLeft') { go(-1); e.preventDefault(); }
+  else if (/^[0-9]$/.test(e.key)) {
+    const p = DATA.prompts[cur];
+    const s = p.samples[e.key === '0' ? 9 : +e.key - 1];
+    if (s) toggle(key(p.id, s.i), 'keep');
+  }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+  $('#runmeta').textContent = `${DATA.model} · ${DATA.stats.prompts} prompts · ${DATA.stats.perPrompt} replies each`;
+  $('#prev').onclick = () => go(-1);
+  $('#next').onclick = () => go(1);
+  $('#export').onclick = exportJSONL;
+  const per = DATA.stats.perPrompt;
+  $('#numhint').innerHTML = per <= 10
+    ? '<kbd>1</kbd>–<kbd>0</kbd> keep that reply'
+    : `<kbd>1</kbd>–<kbd>0</kbd> keep replies 1–10 of ${per}`;
+  $('#layout').textContent = layout === 'grid' ? 'list view' : 'grid view';
+  $('#layout').onclick = () => {
+    layout = layout === 'grid' ? 'list' : 'grid';
+    localStorage.setItem('nb-rej:layout', layout);
+    const per = DATA.stats.perPrompt;
+  $('#numhint').innerHTML = per <= 10
+    ? '<kbd>1</kbd>–<kbd>0</kbd> keep that reply'
+    : `<kbd>1</kbd>–<kbd>0</kbd> keep replies 1–10 of ${per}`;
+  $('#layout').textContent = layout === 'grid' ? 'list view' : 'grid view';
+    render();
+  };
+  $('#theme').onclick = () => {
+    const r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('nb-rej:theme', r.dataset.theme);
+  };
+  const t = localStorage.getItem('nb-rej:theme');
+  if (t) document.documentElement.dataset.theme = t;
+  render();
+});
+</script>
+
+<header>
+  <span class="brand">nanoBeard</span>
+  <span class="runmeta" id="runmeta"></span>
+  <span class="grow"></span>
+  <span class="runmeta" id="tally"></span>
+  <button id="layout"></button>
+  <button id="theme">theme</button>
+  <button id="export" class="solid">export</button>
+</header>
+
+<main id="main"></main>
+
+<div class="navbar">
+  <button id="prev">← prev</button>
+  <span class="pos" id="pos"></span>
+  <button id="next">next →</button>
+  <span class="hint" style="margin-left:18px">
+    <kbd>j</kbd> <kbd>k</kbd> move · <span id="numhint"></span>
+  </span>
+</div>
+</body>
+</html>

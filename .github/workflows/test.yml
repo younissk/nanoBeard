@@ -1,0 +1,67 @@
+name: Tests
+
+# Lint, type-check and test on every push and PR. The heavy bit is torch:
+# UV_TORCH_BACKEND=cpu keeps uv off the multi-GB CUDA wheels, which a CPU runner
+# cannot use anyway.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per ref. A superseded push is cancelled — nobody reads stale results.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_TORCH_BACKEND: cpu
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # --frozen fails if uv.lock has drifted from pyproject.toml, which is the
+      # one dependency bug a green test run would otherwise hide.
+      - name: Install
+        run: uv sync --frozen --dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      # Both checkers, matching `make typecheck`. Split into two steps so the
+      # log says which one failed without reading the trace.
+      - name: Type-check (mypy)
+        run: uv run mypy src/nanobeard
+
+      - name: Type-check (pyright)
+        run: uv run pyright
+
+      - name: Test
+        run: uv run pytest
+
+  pre-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
+        # pyright runs in the `checks` job against the real, synced env. The
+        # hook would build a second env without nanobeard's deps and report
+        # import errors that mean nothing.
+        env:
+          SKIP: pyright
