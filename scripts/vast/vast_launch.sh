@@ -2,7 +2,7 @@
 # Provision a Vast.ai instance and bootstrap it for nanoBeard training.
 #
 # Prereqs (local):
-#   pip install vastai
+#   uv tool install vastai
 #   vastai set api-key <your-key>             # one-time
 #   set -a; source .env; set +a               # loads HF_TOKEN + WANDB_API_KEY
 #   # or export them by hand:
@@ -18,7 +18,11 @@ set -euo pipefail
 CONFIG="${CONFIG:-sloop}"
 VARIANT="${VARIANT:-gpu}"
 DATASET="${DATASET:-tiny_pirate_stories}"
-GPU="${GPU:-RTX_4090}"
+# A LIST, cheapest wins. Measured 2026-09-10: the 5090 bid floor moved
+# $0.202 -> $0.333 in ten minutes while the 4090 sat at $0.200, so the "best
+# card" swapped twice inside one session. Pin a single name here to override,
+# e.g. GPU=RTX_5090 if you need the 32GB.
+GPU="${GPU:-RTX_4090,RTX_5090,RTX_3090}"
 # -devel, not -runtime: it ships gcc/nvcc, which torch.compile's inductor
 # backend needs to JIT kernels. CUDA 12.8 is also the floor for sm_120 (RTX
 # 5090). The image torch is irrelevant — `uv sync` installs the pinned one.
@@ -33,10 +37,18 @@ INTERRUPTIBLE="${INTERRUPTIBLE:-1}"
 # $0.27-0.39/hr on-demand; bids clear well under that. Aggregator prices move
 # fast (4090 floors shifted ~59% in a month) — re-check before a long run.
 MAX_DPH="${MAX_DPH:-0.40}"
-BID="${BID:-$MAX_DPH}"
-# Datacenter hosts, not residential: bid instances get evicted either way, but
-# DC hosts have the uplink to reload a checkpoint quickly afterwards.
-DATACENTER="${DATACENTER:-1}"
+# Bid derived from the chosen offer's own min_bid, NOT from MAX_DPH: vast bills
+# your bid, so bidding the cap when the floor is half that simply donates the
+# difference. The multiplier is headroom against being outbid immediately.
+BID_MULTIPLIER="${BID_MULTIPLIER:-1.15}"
+BID="${BID:-}"   # set explicitly to override the derived bid
+# Off by default, against the usual advice. Measured on vast 2026-09-10 for a
+# 4090: datacenter=true cut the board from 15 offers to 2 and raised the floor
+# from $0.168 to $0.391 — 2.3x the price for the privilege. Combined with
+# reliability>=0.95 it returned nothing at all. The non-DC hosts that survive
+# the reliability filter sit at 0.997+, and checkpoint-resume already covers
+# eviction, so paying the DC premium buys very little here.
+DATACENTER="${DATACENTER:-0}"
 INET_DOWN="${INET_DOWN:-200}"        # min Mbps
 # Minimum host CUDA driver. The pinned torch (>=2.12) ships a cu12.9+ wheel that
 # refuses to init on older drivers ("NVIDIA driver too old"), so reject hosts
@@ -49,32 +61,33 @@ REPO_REF="${REPO_REF:-main}"
 
 log() { echo -e "\033[1;32m[vast]\033[0m $*"; }
 
-command -v vastai >/dev/null || { echo "Install vast-cli: pip install vastai"; exit 1; }
+command -v vastai >/dev/null || { echo "Install vast-cli: uv tool install vastai"; exit 1; }
 [ -n "${HF_TOKEN:-}" ] || { echo "Set HF_TOKEN in env"; exit 1; }
 [ -n "${WANDB_API_KEY:-}" ] || log "WANDB_API_KEY unset — training runs without wandb logging"
 
-# 1. Find a cheap matching offer.
-QUERY="gpu_name=$GPU num_gpus=1 dph_total<=$MAX_DPH inet_down>=$INET_DOWN reliability>=0.95 cuda_vers>=$CUDA_VERS"
-[ "$INTERRUPTIBLE" = "1" ] && QUERY="$QUERY type=bid"
-[ "$DATACENTER" = "1" ]    && QUERY="$QUERY datacenter=true"
+# 1. Find the cheapest usable offer across the candidate GPUs.
+#
+# The selection lives in nanobeard.vast_offers, not here: it has to survive
+# vast's "Unrecognized field" warning (which otherwise returns on-demand offers
+# with only a warning), derive the bid from the offer's own min_bid, and rank
+# across GPU types. That is testable Python, not shell.
+OFFER_ARGS=(--gpus "$GPU" --max-dph "$MAX_DPH" --bid-multiplier "$BID_MULTIPLIER"
+            --inet-down "$INET_DOWN" --cuda-vers "$CUDA_VERS")
+[ "$DATACENTER" = "1" ]    && OFFER_ARGS+=(--datacenter)
+[ "$INTERRUPTIBLE" = "1" ] || OFFER_ARGS+=(--on-demand)
 
-log "Searching offers: $QUERY"
-# `|| true`: a no-match must not abort under `set -e` (the python prints an
-# empty id), so the friendly hint below can fire instead of dying silently.
-OFFER=$(vastai search offers "$QUERY" \
-    -o 'dph+' \
-    --raw 2>/dev/null | python -c "import json,sys; offers=json.load(sys.stdin); print(offers[0]['id'] if offers else '')") || true
+log "Searching offers across: $GPU (cap \$$MAX_DPH/hr)"
+uv run python -m nanobeard.vast_offers "${OFFER_ARGS[@]}" --board || exit 1
 
-[ -n "$OFFER" ] || {
-    echo "No offers matched: $QUERY"
-    echo "Relax constraints, e.g.:"
-    echo "  MAX_DPH=0.60 $0        # raise the cap"
-    echo "  DATACENTER=0 $0        # allow residential hosts"
-    echo "  INTERRUPTIBLE=0 $0     # on-demand instead of bid"
-    echo "  GPU=RTX_3090 $0        # cheaper card"
-    exit 1
-}
-log "Picked offer $OFFER"
+PICK=$(uv run python -m nanobeard.vast_offers "${OFFER_ARGS[@]}" --pick) || exit 1
+OFFER=$(echo "$PICK"    | awk '{print $1}')
+MIN_BID=$(echo "$PICK"  | awk '{print $2}')
+DERIVED=$(echo "$PICK"  | awk '{print $3}')
+OFFER_DPH=$(echo "$PICK" | awk '{print $4}')
+PICKED_GPU=$(echo "$PICK" | awk '{print $5}')
+
+log "Picked $PICKED_GPU offer $OFFER (dph=$OFFER_DPH, min_bid=$MIN_BID)"
+[ -n "$BID" ] || BID="$DERIVED"
 
 # 2. Create the instance with --onstart so it bootstraps itself.
 ONSTART=$(cat <<EOF
@@ -91,8 +104,10 @@ EOF
 
 PRICE_ARGS=()
 if [ "$INTERRUPTIBLE" = "1" ]; then
-    PRICE_ARGS=(--price "$BID")
-    log "Creating INTERRUPTIBLE instance, bid \$$BID/hr"
+    # The flag is --bid_price. --price is a different thing and passing it
+    # gets you an on-demand instance at full rate.
+    PRICE_ARGS=(--bid_price "$BID")
+    log "Creating INTERRUPTIBLE instance, bid \$$BID/hr (min_bid \$$MIN_BID)"
 else
     log "Creating on-demand instance"
 fi

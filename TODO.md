@@ -23,6 +23,13 @@ before — mypy always exited first and masked it.
 
 ## Decide before the next GPU run
 
+- [ ] **Check `make vast-offers` before every run — the ranking is not stable.**
+      Measured 2026-09-10 within one session: the RTX_5090 bid floor moved
+      $0.202 -> $0.333 while the 4090 held at $0.200, so the cheapest card
+      swapped twice in ten minutes. `GPU` is a candidate *list* now and the
+      launcher picks the cheapest; pin a single name only when you need
+      specific VRAM.
+
 - [ ] **The 360M token budget changed meaning on 2026-09-10.** Gradient
       accumulation was declared, budgeted for, and never executed — the loop
       took one micro-batch per optimizer step. `frigate_360m_full` gpu
@@ -145,9 +152,9 @@ Ordered. Each step is a hard blocker for the next. Plan derived 2026-09-10 from
 
 - [ ] Ckpt migration script (drop the `training.config` shim long-term).
 - [ ] Sample regression test — store golden samples per release tag.
-- [ ] Cheapest-provider sweep across vast/RunPod rather than vast alone.
-      `vast_launch.sh` now bids (interruptible, datacenter-only, ~$0.40 cap) and
-      verifies `is_bid` after create, but only against vast.
+- [ ] Cheapest-provider sweep across RunPod too. `make vast-offers` ranks bid
+      floors across GPU types on vast; RunPod spot is the reliability hedge and
+      is not covered.
 - [ ] DVC or hash-based data versioning for the bins.
 - [ ] HF Hub model-card auto-gen from `training_metadata.json`. `hf/model_card.md`
       now exists but is hand-written and nothing in `hf/*.py` reads it or

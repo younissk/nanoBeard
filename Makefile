@@ -1,6 +1,6 @@
 .PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
-        vast-launch vast-ssh vast-logs vast-destroy \
+        vast-offers vast-launch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
 
 UV ?= uv
@@ -109,6 +109,14 @@ push-data:
 	$(UV) run python -m nanobeard.dataset_pipeline.push_to_hf --data-dir $(DATA_DIR)
 
 # ----- Vast.ai -----
+
+# Ranked board of the cheapest bid offers across candidate GPUs. Read-only —
+# creates nothing. Prices move by the minute, so check before a long run.
+VAST_GPUS ?= RTX_4090,RTX_5090,RTX_3090
+VAST_MAX_DPH ?= 0.40
+
+vast-offers:
+	$(UV) run python -m nanobeard.vast_offers --gpus $(VAST_GPUS) --max-dph $(VAST_MAX_DPH) --board
 
 vast-launch:
 	CONFIG=$(CONFIG) ./scripts/vast/vast_launch.sh
