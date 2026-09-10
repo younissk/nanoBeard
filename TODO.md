@@ -39,13 +39,57 @@ before — mypy always exited first and masked it.
 Ordered. Each step is a hard blocker for the next. Plan derived 2026-09-10 from
 `src/nanobeard/config.py` + the `pirate_enhanced` data recipe.
 
-- [ ] **0. Tokenizer fertility check (free, 10 min).** Run math/code text through
-      `pirate_bpe.json` and measure tokens-per-char vs plain English. 16k vocab
-      trained on story text may tokenize numbers/symbols badly, which silently
-      shrinks effective context. Do this before committing to a context length.
-- [ ] **1. Extend context past `block_size=512`.** Hard blocker: a CoT trace for
-      even an easy GSM8K problem is 300-800 tokens and the prompt eats the rest.
-      A reasoning episode does not fit today. Three places already work around
+- [x] **0. Tokenizer fertility check — done 2026-09-10.** `make fertility`
+      (`src/nanobeard/fertility.py`, corpus ships beside it, no network).
+      `REFERENCE=Qwen/Qwen3-0.6B make fertility` adds a control.
+
+      **The hypothesis was wrong in the useful direction: the tokenizer is not
+      the problem.** Tokens per character on `pirate_enhanced` (16k), each
+      domain as a multiple of plain English:
+
+      | domain | pirate_bpe 16k | GPT-2 50k | Qwen3 151k |
+      |---|---|---|---|
+      | english_prose | 1.00x | 1.00x | 1.00x |
+      | gsm8k_problem | 1.17x | 1.11x | 1.19x |
+      | gsm8k_cot | **2.25x** | 1.92x | 2.42x |
+      | arithmetic | **2.74x** | 2.26x | 4.18x |
+      | algebra | 2.23x | 2.22x | 2.55x |
+      | python_code | 2.51x | 2.27x | 1.43x |
+
+      CoT costs ~2x prose in *every* tokenizer — that is the domain, not us. On
+      arithmetic `pirate_bpe` beats Qwen3 outright, because Qwen3 splits every
+      digit on purpose (`1024` -> `1 0 2 4`) while ours merges pairs
+      (`1024` -> `10 2 4`). Fewer tokens, but note that per-digit splitting is
+      the choice math-capable models make deliberately, so this is cheaper
+      context, not better arithmetic.
+
+      **The number step 1 turns on:** one complete GSM8K episode
+      (problem + CoT + `#### answer`) in the SFT chat format is **147 tokens**
+      of 512. So:
+
+      - zero-shot, one episode — 147/512, fits
+      - 1-shot + generation — 294/512, fits
+      - 3-shot + generation — 588/512, **overflows**
+      - 5-shot + generation — 882/512, **overflows**
+
+      So the roadmap's original claim ("a reasoning episode does not fit today")
+      is too strong: an *average* episode fits zero-shot. What does not fit is
+      few-shot prompting, harder problems with 6-8 CoT steps, or any headroom at
+      all. Still a blocker for step 1, for a more precise reason.
+
+      Side finding: the 8k `tiny_pirate_stories` tokenizer (Sloop) is much worse
+      — 2.77x on CoT, 4.10x on arithmetic, 99% single-character tokens. Do not
+      reuse it for anything numeric.
+
+      **Conclusion: do not retrain the tokenizer for math.** Spend the effort on
+      `block_size` (step 1) and the data mix (step 2). Revisit only if step 4
+      shows arithmetic errors clustering on multi-digit intermediates, which
+      would argue for per-digit splitting like Qwen3 — at a further ~1.5x
+      context cost.
+- [ ] **1. Extend context past `block_size=512`.** Hard blocker, quantified by
+      step 0: one GSM8K episode is 147 tokens, so 512 holds a zero-shot episode
+      and nothing else — no few-shot prefix, no long CoT, no headroom. 2048
+      buys a 5-shot prompt with room to spare. Three places already work around
       this ceiling — `sample.chat_repl`, `chat/server.trim_turns` and
       `rejection/selfplay` all drop the oldest turns to fit. RoPE is already in, so: bump
       `block_size` to 2048-4096, optionally rebase `rope_theta` to ~10k-50k if
