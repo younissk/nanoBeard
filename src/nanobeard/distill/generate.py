@@ -20,9 +20,12 @@ should leave room for later RL rather than saturating the model.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from nanobeard.distill import prompts as P
@@ -55,6 +58,33 @@ TOOL_SYS = (
     "If NO tool in the list fits the request, set tool_call and tool_result to "
     "null and just write the pirate reply in 'final'."
 )
+
+def job_key(kind: str, item) -> str:
+    """Stable id for a (kind, prompt) pair, so --resume can skip what is done.
+
+    Hashed rather than stored raw: the key goes into every row and the prompts
+    are long enough that repeating them would noticeably bloat the file.
+    """
+    text = item if isinstance(item, str) else json.dumps(item, sort_keys=True, default=str)
+    return f"{kind}:{hashlib.sha256(text.encode()).hexdigest()[:16]}"
+
+
+def completed_keys(path: Path) -> set[str]:
+    """Keys already present in a partially-written output file."""
+    if not path.exists():
+        return set()
+    done = set()
+    with path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                done.add(json.loads(line)["key"])
+            except (json.JSONDecodeError, KeyError):
+                continue  # a torn final line from a hard kill; just regenerate it
+    return done
+
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.S)
 _FINAL = re.compile(r"####\s*(-?[\d,]*\.?\d+)")
@@ -156,6 +186,9 @@ def main() -> None:
     ap.add_argument("--max-tokens", type=int, default=1400)
     ap.add_argument("--thinking", action="store_true",
                     help="Let the teacher reason first. ~6x the cost; measured no better.")
+    ap.add_argument("--workers", type=int, default=8, help="Concurrent API calls")
+    ap.add_argument("--resume", action="store_true",
+                    help="Append to --out, skipping examples already generated")
     args = ap.parse_args()
 
     n_chat = int(args.n * args.chat_share)
@@ -177,28 +210,57 @@ def main() -> None:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    # Resume: append to what is there and skip the keys already written. A run
+    # of a few thousand paid API calls should never have to start over because
+    # of one timeout at example 2,800.
+    done = completed_keys(out) if args.resume else set()
+    if done:
+        print(f"resuming: {len(done)} examples already in {out}")
+    jobs = [(k, it) for (k, it) in jobs if job_key(k, it) not in done]
+    if not jobs:
+        print("nothing left to generate")
+        return
+
     kept: dict[str, int] = {}
-    with out.open("w") as f:
-        for i, (kind, item) in enumerate(jobs, 1):
-            fn = {"chat": gen_chat, "tool": gen_tool, "math": gen_math}[kind]
-            row = fn(teacher, item)  # type: ignore[operator]
+    lock = threading.Lock()
+    processed = 0
+    total = len(jobs)
+
+    def work(job: tuple[str, object]) -> None:
+        nonlocal processed
+        kind, item = job
+        fn = {"chat": gen_chat, "tool": gen_tool, "math": gen_math}[kind]
+        row = fn(teacher, item)  # type: ignore[operator]
+        with lock:
+            processed += 1
             if row is not None:
+                row["key"] = job_key(kind, item)
                 f.write(json.dumps(row) + "\n")
+                # flush() every row, not at the end: the buffer is ~8KB, so a
+                # crash would otherwise silently discard work already paid for.
+                f.flush()
                 kept[row["kind"]] = kept.get(row["kind"], 0) + 1
-            if i % 10 == 0 or i == len(jobs):
-                print(f"  {i}/{len(jobs)}  kept={sum(kept.values())}  {teacher.usage.summary()}")
+            if processed % 25 == 0 or processed == total:
+                print(f"  {processed}/{total}  kept={sum(kept.values())}  "
+                      f"{teacher.usage.summary()}", flush=True)
+
+    with out.open("a" if done else "w") as f, ThreadPoolExecutor(args.workers) as pool:
+        list(pool.map(work, jobs))
 
     after = balance()
-    total = sum(kept.values())
-    print(f"\nwrote {total} examples to {out}")
+    written = sum(kept.values())
+    total_in_file = sum(1 for line in out.open() if line.strip())
+    print(f"\nwrote {written} new examples to {out} ({total_in_file} total in file)")
     print(f"  by kind: {kept}")
-    print(f"  dropped: {len(jobs) - total} (teacher disagreed, wrong answer, or unparseable)")
+    print(f"  dropped: {len(jobs) - written} (teacher disagreed, wrong answer, or unparseable)")
     print(f"  {teacher.usage.summary()}")
     if before is not None and after is not None:
         spent = before - after
         print(f"  balance {before:.4f} -> {after:.4f}  (spent {spent:.4f})")
-        if total:
-            print(f"  cost/example {spent / total:.5f}  ->  3,000 examples ≈ {spent / total * 3000:.2f}")
+        if written:
+            print(f"  cost/example {spent / written:.5f}  ->  "
+                  f"3,000 examples ≈ {spent / written * 3000:.2f}")
 
 
 if __name__ == "__main__":
