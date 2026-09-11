@@ -30,6 +30,9 @@ LORA_RANK="${LORA_RANK:-16}"
 # Push the finished adapter to the Hub. On a rented box this is the only
 # reliable way to get it back — SSH through Vast's proxy is not dependable.
 LORA_PUSH_REPO="${LORA_PUSH_REPO:-}"
+# e.g. "--cap chat=400 --cap math=300 --cap tool_none=100". Balances the
+# supervised-token budget, which example counts misrepresent.
+LORA_CAPS="${LORA_CAPS:-}"
 # Watchdog contract: this file appears exactly once, containing the exit status.
 DONE_MARKER="${DONE_MARKER:-$REPO_DIR/.vast_done}"
 
@@ -144,6 +147,7 @@ mkdir -p "$(dirname "$LORA_OUT")" "runs/$CONFIG"
     if [ "$VARIANT" = "lora" ]; then
         echo "uv run --group finetune python -m $ENTRY \\"
         echo "    --data $LORA_DATA --out $LORA_OUT \\"
+        echo "    ${LORA_CAPS} \\"
         echo "    --epochs $LORA_EPOCHS --rank $LORA_RANK \\"
         echo "    ${LORA_PUSH_REPO:+--push-to-hub $LORA_PUSH_REPO} 2>&1 | tee $LORA_OUT.log"
     else
