@@ -131,10 +131,15 @@ vast-launch:
 # success, on timeout, and on Ctrl-C — because a stopped instance still bills.
 VAST_TIMEOUT_MIN ?= 60
 
+# setsid: the watchdog must outlive the shell that starts it. Started as a plain
+# background job it stays in the caller's process group, so killing that shell
+# signals the watchdog too — whose EXIT trap then destroys a perfectly healthy
+# instance mid-bootstrap. Observed exactly that.
 vast-watch:
-	./scripts/vast/vast_watch.sh $$(cat .vast_instance) \
+	setsid nohup ./scripts/vast/vast_watch.sh $$(cat .vast_instance) \
 		--timeout-min $(VAST_TIMEOUT_MIN) \
-		--fetch /root/pirate_llm/runs/lora runs/
+		--fetch /root/pirate_llm/runs/lora runs/ > runs/vast_watch.log 2>&1 &
+	@echo "watchdog detached; tail runs/vast_watch.log"
 
 vast-ssh:
 	@INSTANCE=$$(cat .vast_instance 2>/dev/null) && vastai ssh-url $$INSTANCE
