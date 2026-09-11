@@ -152,9 +152,13 @@ print(f\"{d.get('actual_status')}|{d.get('intended_status')}|{(d.get('status_msg
         running) log "running"; break ;;
         exited)  log "FAILED: instance exited during startup — $MSG"; DEAD=1; break ;;
     esac
-    if [ "$INTENT" = "stopped" ] && [ -n "$MSG" ]; then
-        log "FAILED: host refused to start — $MSG"; DEAD=1; break
-    fi
+    # Only an actual error counts. status_msg carries docker pull progress
+    # ("f81de80fb4b1: Verifying Checksum") during a normal startup, and treating
+    # any non-empty message as a refusal killed healthy instances mid-pull.
+    case "$MSG" in
+        *Error*|*error*|*failed*|*Failed*)
+            log "FAILED: host refused to start — $MSG"; DEAD=1; break ;;
+    esac
     sleep 10
 done
 if [ "${DEAD:-0}" = "1" ] || [ "$(date +%s)" -ge "$DEADLINE" ]; then
