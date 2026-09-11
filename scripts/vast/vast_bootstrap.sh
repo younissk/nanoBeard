@@ -32,6 +32,19 @@ DONE_MARKER="${DONE_MARKER:-$REPO_DIR/.vast_done}"
 
 log() { echo -e "\033[1;34m[bootstrap]\033[0m $*"; }
 
+# Repair SSH before anything else. The Vast PyTorch images ship
+# /root/.ssh/authorized_keys with permissions sshd refuses ("bad ownership or
+# modes"), so every key is rejected — including Vast's own proxy. Without this
+# there is no way to reach the box at all: `vastai execute` only works on
+# stopped instances, and `vastai copy` to local was down for maintenance when
+# this bit. Costs nothing and makes the instance reachable minutes earlier.
+if [ -d /root/.ssh ]; then
+    chown -R root:root /root/.ssh || true
+    chmod 700 /root/.ssh || true
+    chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
+    log "repaired /root/.ssh permissions"
+fi
+
 # 1. System deps. Most CUDA images already have python + git.
 # build-essential (gcc) is required: torch.compile's inductor/triton backend
 # JIT-compiles CUDA kernels through a C compiler, which the pytorch *-runtime
