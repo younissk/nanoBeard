@@ -18,6 +18,13 @@ DATASET="${DATASET:-tiny_pirate_stories}"
 REPO_URL="${REPO_URL:-https://github.com/younissk/pirate_llm}"
 REPO_DIR="${REPO_DIR:-$HOME/pirate_llm}"
 DATA_HF_REPO="${DATA_HF_REPO:-younissk/nanobeard-data-${DATASET}}"
+# VARIANT=lora only.
+LORA_DATA="${LORA_DATA:-runs/distill/train.jsonl}"
+LORA_OUT="${LORA_OUT:-runs/lora/pirate-v1}"
+LORA_EPOCHS="${LORA_EPOCHS:-2}"
+LORA_RANK="${LORA_RANK:-16}"
+# Watchdog contract: this file appears exactly once, containing the exit status.
+DONE_MARKER="${DONE_MARKER:-$REPO_DIR/.vast_done}"
 
 log() { echo -e "\033[1;34m[bootstrap]\033[0m $*"; }
 
@@ -51,9 +58,23 @@ git pull --ff-only || true
 # different torch build than the locally-tested 3.12 environment.
 log "uv sync (python 3.12)"
 uv python install 3.12
-uv sync --no-dev --python 3.12
+if [ "$VARIANT" = "lora" ]; then
+    # The LoRA path needs transformers/peft/trl, which are deliberately not in
+    # the default install (see pyproject: they only exist for fine-tuning).
+    uv sync --no-dev --group finetune --python 3.12
+else
+    uv sync --no-dev --python 3.12
+fi
 
 # 5. Pull dataset from HF Hub (instead of running the full pipeline).
+# The LoRA trains on teacher-generated JSONL, which is committed to the repo and
+# therefore already on disk after the clone — nothing to download.
+if [ "$VARIANT" = "lora" ]; then
+    log "VARIANT=lora: training data is in the repo at $LORA_DATA"
+    [ -f "$LORA_DATA" ] || { log "MISSING $LORA_DATA — is REPO_REF=$REPO_REF the right branch?"; exit 1; }
+    log "  $(wc -l < "$LORA_DATA") examples"
+else
+
 DATA_DIR="data/datasets/$DATASET"
 log "Pulling dataset $DATA_HF_REPO -> $DATA_DIR/"
 mkdir -p "$DATA_DIR"
@@ -71,19 +92,50 @@ uv run hf download "$DATA_HF_REPO" \
     uv run python -m nanobeard.dataset_pipeline.build --dataset "$DATASET"
 }
 
+fi
+
 # 6. Resume training in a detachable tmux session.
 # VARIANT=sft runs the supervised-finetuning entrypoint (loads the pretrained
 # ckpt named by config.pretrained_ckpt_repo); anything else is pretraining.
 SESSION="nanobeard-$CONFIG"
-if [ "$VARIANT" = "sft" ]; then ENTRY="nanobeard.sft"; else ENTRY="nanobeard.train"; fi
+case "$VARIANT" in
+    sft)  ENTRY="nanobeard.sft" ;;
+    lora) ENTRY="nanobeard.finetune.train" ;;
+    *)    ENTRY="nanobeard.train" ;;
+esac
 log "Starting $ENTRY in tmux session: $SESSION"
 log "  Reattach with:  tmux attach -t $SESSION"
 log "  Detach with:    Ctrl-b d"
 
 mkdir -p "runs/$CONFIG"
 tmux kill-session -t "$SESSION" 2>/dev/null || true
-tmux new-session -d -s "$SESSION" \
-    "cd $REPO_DIR && CONFIG_VARIANT=$VARIANT uv run python -m $ENTRY --config configs/$CONFIG.py 2>&1 | tee runs/$CONFIG/train.log"
+# Write a runner to disk rather than nesting a command string through
+# launch -> onstart -> bootstrap -> tmux. Four layers of quoting is how these
+# break, and the failure shows up as a box that bills while doing nothing.
+RUNNER="$REPO_DIR/.vast_run.sh"
+mkdir -p "$(dirname "$LORA_OUT")" "runs/$CONFIG"
+{
+    echo '#!/usr/bin/env bash'
+    echo "cd $REPO_DIR"
+    echo 'set -o pipefail'
+    if [ "$VARIANT" = "lora" ]; then
+        echo "uv run --group finetune python -m $ENTRY \\"
+        echo "    --data $LORA_DATA --out $LORA_OUT \\"
+        echo "    --epochs $LORA_EPOCHS --rank $LORA_RANK 2>&1 | tee $LORA_OUT.log"
+    else
+        echo "CONFIG_VARIANT=$VARIANT uv run python -m $ENTRY \\"
+        echo "    --config configs/$CONFIG.py 2>&1 | tee runs/$CONFIG/train.log"
+    fi
+    # The status file is the watchdog's signal to fetch results and destroy the
+    # box. Written whatever happens, so a crash shuts down as promptly as a
+    # success — an instance that fails silently still bills by the second.
+    echo 'STATUS=$?'
+    echo "echo \$STATUS > $DONE_MARKER"
+    echo 'echo "=== RUN FINISHED status=$STATUS ==="'
+} > "$RUNNER"
+chmod +x "$RUNNER"
+
+tmux new-session -d -s "$SESSION" "$RUNNER"
 
 log "Done. Training is running in tmux ($SESSION)."
 log "Checkpoints will roll to HF if hf_ckpt_repo is set in $CONFIG.py."

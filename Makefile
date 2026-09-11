@@ -1,6 +1,6 @@
 .PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill lora lora-merge \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
-        vast-offers vast-launch vast-ssh vast-logs vast-destroy \
+        vast-offers vast-launch vast-watch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
 
 UV ?= uv
@@ -37,6 +37,7 @@ help:
 	@echo "  make distill DISTILL_N=40   Generate pirate SFT data with the Kimi teacher"
 	@echo "  make lora                   LoRA fine-tune Qwen3-0.6B on that data"
 	@echo "  make lora-merge GGUF=1      Merge adapter -> HF -> GGUF"
+	@echo "  make vast-watch             Wait for the run, fetch results, destroy the box"
 	@echo "  make evals [PERSONA=1]      gsm8k + tool-calling + pirate-voice gates"
 	@echo "  make evals-diff A=.. B=..   Compare two eval reports"
 	@echo ""
@@ -125,6 +126,15 @@ vast-offers:
 
 vast-launch:
 	CONFIG=$(CONFIG) ./scripts/vast/vast_launch.sh
+
+# Watch an instance, fetch results, then DESTROY it. Always destroys — on
+# success, on timeout, and on Ctrl-C — because a stopped instance still bills.
+VAST_TIMEOUT_MIN ?= 60
+
+vast-watch:
+	./scripts/vast/vast_watch.sh $$(cat .vast_instance) \
+		--timeout-min $(VAST_TIMEOUT_MIN) \
+		--fetch /root/pirate_llm/runs/lora runs/
 
 vast-ssh:
 	@INSTANCE=$$(cat .vast_instance 2>/dev/null) && vastai ssh-url $$INSTANCE
