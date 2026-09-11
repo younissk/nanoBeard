@@ -19,6 +19,16 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Only needed to train the LoRA. Kept out of the default install because it
+# drags in transformers/peft/trl, which nothing else in the package imports —
+# and the GGUF converter deliberately runs under its own interpreter
+# (see hf/export_gguf.py) to avoid the transformers pin fighting tokenizers.
+finetune = [
+    "transformers>=5.17.0",
+    "peft>=0.20.0",
+    "trl>=1.13.0",
+    "accelerate>=1.15.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-xdist>=3.5.0",

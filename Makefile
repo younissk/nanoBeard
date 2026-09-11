@@ -1,4 +1,4 @@
-.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill \
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill lora lora-merge \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
         vast-offers vast-launch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
@@ -35,6 +35,8 @@ help:
 	@echo "  make fertility              Tokens/char by domain (REFERENCE=Qwen/Qwen3-0.6B)"
 	@echo "  make autobatch              Measure tok/s vs micro-batch on this GPU"
 	@echo "  make distill DISTILL_N=40   Generate pirate SFT data with the Kimi teacher"
+	@echo "  make lora                   LoRA fine-tune Qwen3-0.6B on that data"
+	@echo "  make lora-merge GGUF=1      Merge adapter -> HF -> GGUF"
 	@echo "  make evals [PERSONA=1]      gsm8k + tool-calling + pirate-voice gates"
 	@echo "  make evals-diff A=.. B=..   Compare two eval reports"
 	@echo ""
@@ -169,6 +171,26 @@ DISTILL_OUT ?= runs/distill/sample.jsonl
 distill:
 	$(UV) run python -m nanobeard.distill.generate --out $(DISTILL_OUT) --n $(DISTILL_N) \
 		$(if $(THINKING),--thinking,)
+
+# ----- LoRA fine-tune -----
+# Needs the finetune dependency group: `uv sync --group finetune`.
+# Run `make evals` before and after. Ship only if voice went up and gsm8k,
+# tool choice and restraint all held.
+
+LORA_DATA ?= runs/distill/train.jsonl
+LORA_OUT ?= runs/lora/pirate-v1
+LORA_RANK ?= 16
+LORA_EPOCHS ?= 2
+
+lora:
+	$(UV) run --group finetune python -m nanobeard.finetune.train \
+		--data $(LORA_DATA) --out $(LORA_OUT) --rank $(LORA_RANK) --epochs $(LORA_EPOCHS) \
+		$(if $(DEVICE),--device $(DEVICE),) $(if $(LIMIT),--limit $(LIMIT),)
+
+# Fold the adapter into the base weights; llama.cpp cannot load PEFT adapters.
+lora-merge:
+	$(UV) run --group finetune python -m nanobeard.finetune.merge \
+		--adapter $(LORA_OUT) $(if $(GGUF),--gguf,)
 
 # ----- Capability gates -----
 # Run before AND after every fine-tune. Voice going up is not a result; voice
