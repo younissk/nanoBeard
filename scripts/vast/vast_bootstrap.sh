@@ -27,6 +27,9 @@ LORA_DATA="${LORA_DATA:-runs/distill/train.jsonl}"
 LORA_OUT="${LORA_OUT:-runs/lora/pirate-v1}"
 LORA_EPOCHS="${LORA_EPOCHS:-2}"
 LORA_RANK="${LORA_RANK:-16}"
+# Push the finished adapter to the Hub. On a rented box this is the only
+# reliable way to get it back — SSH through Vast's proxy is not dependable.
+LORA_PUSH_REPO="${LORA_PUSH_REPO:-}"
 # Watchdog contract: this file appears exactly once, containing the exit status.
 DONE_MARKER="${DONE_MARKER:-$REPO_DIR/.vast_done}"
 
@@ -141,7 +144,8 @@ mkdir -p "$(dirname "$LORA_OUT")" "runs/$CONFIG"
     if [ "$VARIANT" = "lora" ]; then
         echo "uv run --group finetune python -m $ENTRY \\"
         echo "    --data $LORA_DATA --out $LORA_OUT \\"
-        echo "    --epochs $LORA_EPOCHS --rank $LORA_RANK 2>&1 | tee $LORA_OUT.log"
+        echo "    --epochs $LORA_EPOCHS --rank $LORA_RANK \\"
+        echo "    ${LORA_PUSH_REPO:+--push-to-hub $LORA_PUSH_REPO} 2>&1 | tee $LORA_OUT.log"
     else
         echo "CONFIG_VARIANT=$VARIANT uv run python -m $ENTRY \\"
         echo "    --config configs/$CONFIG.py 2>&1 | tee runs/$CONFIG/train.log"

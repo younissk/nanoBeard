@@ -46,6 +46,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--device", default=None, help="cuda | mps | cpu (default: best available)")
     ap.add_argument("--limit", type=int, default=None, help="Use only N examples (smoke runs)")
+    ap.add_argument("--push-to-hub", default=None, metavar="REPO",
+                    help="Upload the adapter here when done, e.g. younissk/nanoBeard-pirate-lora")
     args = ap.parse_args()
 
     import torch
@@ -130,6 +132,34 @@ def main() -> None:
     tok.save_pretrained(str(out))
     (out / "training_args.json").write_text(json.dumps(vars(args), indent=2))
     print(f"\nadapter saved to {out}")
+
+    # The Hub is the retrieval channel for a rented box, exactly as the
+    # pretraining loop uses hf_ckpt_repo. Learned the hard way: an adapter that
+    # exists only on a Vast instance is an adapter you may never see, because
+    # `vastai execute` refuses on running instances, `vastai copy` to local can
+    # be down for maintenance, and the SSH proxy can simply fail to forward.
+    if args.push_to_hub:
+        import os
+
+        from huggingface_hub import HfApi
+
+        from nanobeard.env import load_env
+
+        load_env()
+        token = os.getenv("HF_TOKEN")
+        if not token or token == "none":
+            print("  ! --push-to-hub given but HF_TOKEN is unset — adapter stays local")
+        else:
+            try:
+                api = HfApi()
+                api.create_repo(args.push_to_hub, token=token, exist_ok=True, private=True)
+                api.upload_folder(
+                    folder_path=str(out), repo_id=args.push_to_hub, token=token,
+                    commit_message=f"LoRA r={args.rank} on {len(train_ex)} examples",
+                )
+                print(f"  -> pushed adapter to https://huggingface.co/{args.push_to_hub}")
+            except Exception as e:
+                print(f"  ! Hub upload failed ({type(e).__name__}: {e}) — adapter is still at {out}")
     print("next: uv run --group finetune python -m nanobeard.finetune.merge "
           f"--adapter {out} --out {out}-merged")
 

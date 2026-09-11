@@ -109,6 +109,7 @@ export LORA_DATA='${LORA_DATA:-runs/distill/train.jsonl}'
 export LORA_OUT='${LORA_OUT:-runs/lora/pirate-v1}'
 export LORA_EPOCHS='${LORA_EPOCHS:-2}'
 export LORA_RANK='${LORA_RANK:-16}'
+export LORA_PUSH_REPO='${LORA_PUSH_REPO:-}'
 export DONE_MARKER='/root/pirate_llm/.vast_done'
 curl -fsSL $REPO_URL/raw/$REPO_REF/scripts/vast/vast_bootstrap.sh | bash
 EOF
