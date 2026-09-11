@@ -6,7 +6,7 @@
 # locally — saves ~30 minutes per cold start.
 #
 # Usage on the instance:
-#   curl -fsSL https://raw.githubusercontent.com/younissk/pirate_llm/main/scripts/vast/vast_bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/younissk/nanoBeard/main/scripts/vast/vast_bootstrap.sh | bash
 #   # or, after cloning:
 #   ./scripts/vast/vast_bootstrap.sh
 
@@ -15,7 +15,7 @@ set -euo pipefail
 CONFIG="${CONFIG:-sloop}"
 VARIANT="${VARIANT:-gpu}"
 DATASET="${DATASET:-tiny_pirate_stories}"
-REPO_URL="${REPO_URL:-https://github.com/younissk/pirate_llm}"
+REPO_URL="${REPO_URL:-https://github.com/younissk/nanoBeard}"
 REPO_DIR="${REPO_DIR:-$HOME/pirate_llm}"
 DATA_HF_REPO="${DATA_HF_REPO:-younissk/nanobeard-data-${DATASET}}"
 # VARIANT=lora only.

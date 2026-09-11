@@ -54,7 +54,7 @@ INET_DOWN="${INET_DOWN:-200}"        # min Mbps
 # refuses to init on older drivers ("NVIDIA driver too old"), so reject hosts
 # whose driver predates 12.9 up front instead of crashing after the dataset pull.
 CUDA_VERS="${CUDA_VERS:-12.9}"
-REPO_URL="${REPO_URL:-https://github.com/younissk/pirate_llm}"
+REPO_URL="${REPO_URL:-https://github.com/younissk/nanoBeard}"
 # Branch/tag the instance pulls the bootstrap from. Override when testing a
 # branch, or the box will run main's bootstrap against your branch's code.
 REPO_REF="${REPO_REF:-main}"
