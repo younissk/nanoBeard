@@ -31,6 +31,7 @@ from nanobeard.vast_offers import (
 def _raw(**over) -> dict:
     row = {
         "id": 123,
+        "machine_id": 108820,
         "dph_total": 0.25,
         "min_bid": 0.20,
         "reliability2": 0.99,
@@ -151,6 +152,31 @@ def test_a_gpu_with_no_offers_is_skipped_not_fatal(monkeypatch):
     assert [o.gpu for o in ranked] == ["RTX_4090"]
 
 
+def test_broken_machines_can_be_excluded(monkeypatch):
+    """A dead host advertises one offer per GPU slot, so a naive retry lands on
+    the same machine. Measured: three launches in a row picked machine 108820,
+    all refusing to start with "GPU error"."""
+    monkeypatch.setattr(
+        "nanobeard.vast_offers.search",
+        lambda q, interruptible=True: [
+            _raw(id=1, machine_id=108820, min_bid=0.05),
+            _raw(id=2, machine_id=999, min_bid=0.30),
+        ],
+    )
+    (best,) = cheapest_per_gpu(["RTX_4090"], exclude_machines={108820}, max_dph=0.4,
+                               inet_down=200, reliability=0.95, cuda_vers="12.9",
+                               datacenter=False)
+    assert best.machine_id == 999, "cheapest offer was on the excluded machine"
+
+
+def test_excluding_every_machine_yields_nothing(monkeypatch):
+    monkeypatch.setattr("nanobeard.vast_offers.search",
+                        lambda q, interruptible=True: [_raw(machine_id=7)])
+    assert cheapest_per_gpu(["RTX_4090"], exclude_machines={7}, max_dph=0.4,
+                            inet_down=200, reliability=0.95, cuda_vers="12.9",
+                            datacenter=False) == []
+
+
 def test_cheapest_offer_wins_within_one_gpu(monkeypatch):
     monkeypatch.setattr(
         "nanobeard.vast_offers.search",
@@ -162,7 +188,7 @@ def test_cheapest_offer_wins_within_one_gpu(monkeypatch):
 
 
 def test_board_renders_one_row_per_offer():
-    offers = [Offer("RTX_4090", 1, 0.201, 0.200, 0.999, 665, 13.0)]
+    offers = [Offer("RTX_4090", 1, 108820, 0.201, 0.200, 0.999, 665, 13.0)]
     board = render_board(offers, multiplier=1.15, cap=0.40)
     assert "RTX_4090" in board
     assert "0.230" in board  # the derived bid, not the cap

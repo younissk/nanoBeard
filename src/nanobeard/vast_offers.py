@@ -42,6 +42,7 @@ BAD_FIELD_MARKER = "Unrecognized field"
 class Offer:
     gpu: str
     offer_id: int
+    machine_id: int
     dph: float
     min_bid: float
     reliability: float
@@ -95,6 +96,7 @@ def to_offers(gpu: str, raw: list[dict]) -> list[Offer]:
             Offer(
                 gpu=gpu,
                 offer_id=o["id"],
+                machine_id=int(o.get("machine_id") or 0),
                 dph=float(dph),
                 # On-demand rows carry no min_bid; fall back so the row is still
                 # comparable rather than silently dropped.
@@ -107,23 +109,34 @@ def to_offers(gpu: str, raw: list[dict]) -> list[Offer]:
     return out
 
 
-def cheapest_per_gpu(gpus, **kw) -> list[Offer]:
-    """Best offer for each GPU type, cheapest first. Missing types are skipped."""
+def cheapest_per_gpu(gpus, exclude_machines: set[int] | None = None, **kw) -> list[Offer]:
+    """Best offer for each GPU type, cheapest first. Missing types are skipped.
+
+    `exclude_machines` exists because a broken host advertises many offers — one
+    per GPU slot — so retrying after a failure picks the same dead machine again.
+    Measured: three consecutive launches landed on the same machine_id, all
+    refusing to start with "GPU error".
+    """
     interruptible = kw.pop("interruptible", True)
+    skip = exclude_machines or set()
     best = []
     for gpu in gpus:
-        offers = to_offers(gpu, search(build_query(gpu, **kw), interruptible))
+        offers = [
+            o for o in to_offers(gpu, search(build_query(gpu, **kw), interruptible))
+            if o.machine_id not in skip
+        ]
         if offers:
             best.append(min(offers, key=lambda o: o.min_bid))
     return sorted(best, key=lambda o: o.min_bid)
 
 
 def render_board(offers: list[Offer], multiplier: float, cap: float) -> str:
-    head = f"{'gpu':<10}{'offer':>10}{'dph':>8}{'min_bid':>9}{'bid':>8}{'rel':>7}{'inet':>7}{'cuda':>6}"
+    head = (f"{'gpu':<10}{'offer':>10}{'machine':>9}{'dph':>8}{'min_bid':>9}"
+            f"{'bid':>8}{'rel':>7}{'inet':>7}{'cuda':>6}")
     lines = [head, "-" * len(head)]
     for o in offers:
         lines.append(
-            f"{o.gpu:<10}{o.offer_id:>10}{o.dph:>8.3f}{o.min_bid:>9.3f}"
+            f"{o.gpu:<10}{o.offer_id:>10}{o.machine_id:>9}{o.dph:>8.3f}{o.min_bid:>9.3f}"
             f"{o.bid(multiplier, cap):>8.3f}{o.reliability:>7.3f}"
             f"{o.inet_down:>7.0f}{o.cuda:>6.1f}"
         )
@@ -141,6 +154,8 @@ def main() -> None:
     ap.add_argument("--datacenter", action="store_true",
                     help="Datacenter hosts only. Measured 2.3x more expensive on vast.")
     ap.add_argument("--on-demand", action="store_true", help="Skip interruptible bidding")
+    ap.add_argument("--exclude-machines", default="",
+                    help="Comma-separated machine_ids to skip (hosts known to be broken)")
     ap.add_argument("--board", action="store_true", help="Print the ranked board")
     ap.add_argument("--pick", action="store_true",
                     help="Print `id min_bid bid dph gpu` for the winner (for scripts)")
@@ -155,6 +170,9 @@ def main() -> None:
             cuda_vers=args.cuda_vers,
             datacenter=args.datacenter,
             interruptible=not args.on_demand,
+            exclude_machines={
+                int(m) for m in args.exclude_machines.split(",") if m.strip()
+            },
         )
     except RuntimeError as e:
         sys.exit(str(e))
@@ -167,7 +185,8 @@ def main() -> None:
 
     if args.pick:
         w = offers[0]
-        print(f"{w.offer_id} {w.min_bid} {w.bid(args.bid_multiplier, args.max_dph)} {w.dph} {w.gpu}")
+        print(f"{w.offer_id} {w.min_bid} {w.bid(args.bid_multiplier, args.max_dph)} "
+              f"{w.dph} {w.gpu} {w.machine_id}")
         return
     print(render_board(offers, args.bid_multiplier, args.max_dph))
 

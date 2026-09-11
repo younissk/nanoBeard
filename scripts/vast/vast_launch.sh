@@ -74,6 +74,7 @@ command -v vastai >/dev/null || { echo "Install vast-cli: uv tool install vastai
 # across GPU types. That is testable Python, not shell.
 OFFER_ARGS=(--gpus "$GPU" --max-dph "$MAX_DPH" --bid-multiplier "$BID_MULTIPLIER"
             --inet-down "$INET_DOWN" --cuda-vers "$CUDA_VERS")
+[ -n "${EXCLUDE_MACHINES:-}" ] && OFFER_ARGS+=(--exclude-machines "$EXCLUDE_MACHINES")
 [ "$DATACENTER" = "1" ]    && OFFER_ARGS+=(--datacenter)
 [ "$INTERRUPTIBLE" = "1" ] || OFFER_ARGS+=(--on-demand)
 
@@ -86,8 +87,9 @@ MIN_BID=$(echo "$PICK"  | awk '{print $2}')
 DERIVED=$(echo "$PICK"  | awk '{print $3}')
 OFFER_DPH=$(echo "$PICK" | awk '{print $4}')
 PICKED_GPU=$(echo "$PICK" | awk '{print $5}')
+PICKED_MACHINE=$(echo "$PICK" | awk '{print $6}')
 
-log "Picked $PICKED_GPU offer $OFFER (dph=$OFFER_DPH, min_bid=$MIN_BID)"
+log "Picked $PICKED_GPU offer $OFFER on machine $PICKED_MACHINE (dph=$OFFER_DPH, min_bid=$MIN_BID)"
 [ -n "$BID" ] || BID="$DERIVED"
 
 # 2. Create the instance with --onstart so it bootstraps itself.
@@ -154,7 +156,8 @@ print(f\"{d.get('actual_status')}|{d.get('intended_status')}|{(d.get('status_msg
     sleep 10
 done
 if [ "${DEAD:-0}" = "1" ] || [ "$(date +%s)" -ge "$DEADLINE" ]; then
-    log "destroying the bad instance; re-run to try another host"
+    log "destroying the bad instance"
+    log "retry excluding it:  EXCLUDE_MACHINES=${EXCLUDE_MACHINES:+$EXCLUDE_MACHINES,}$PICKED_MACHINE $0"
     vastai destroy instance "$INSTANCE" -y >/dev/null 2>&1
     rm -f .vast_instance
     exit 1
