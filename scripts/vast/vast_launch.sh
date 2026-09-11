@@ -58,6 +58,7 @@ REPO_URL="${REPO_URL:-https://github.com/younissk/nanoBeard}"
 # Branch/tag the instance pulls the bootstrap from. Override when testing a
 # branch, or the box will run main's bootstrap against your branch's code.
 REPO_REF="${REPO_REF:-main}"
+START_TIMEOUT_S="${START_TIMEOUT_S:-600}"   # image pull on a slow host is minutes
 
 log() { echo -e "\033[1;32m[vast]\033[0m $*"; }
 
@@ -128,6 +129,36 @@ INSTANCE=$(vastai create instance "$OFFER" \
     --raw 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['new_contract'])")
 
 log "Created instance $INSTANCE"
+echo "$INSTANCE" > .vast_instance
+
+# Wait for the box to actually start. Vast happily creates an instance on a
+# machine whose GPU is broken; it sits in "created" with
+# status_msg="Error: GPU error, unable to start instance." and never runs.
+# Measured: one in three hosts tried. Fail loudly here instead of letting a
+# watchdog time out 40 minutes later.
+log "waiting for it to start (up to ${START_TIMEOUT_S}s)"
+DEADLINE=$(( $(date +%s) + START_TIMEOUT_S ))
+while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    READ=$(vastai show instance "$INSTANCE" --raw 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(f\"{d.get('actual_status')}|{d.get('intended_status')}|{(d.get('status_msg') or '')[:70]}\")" 2>/dev/null || echo "?|?|")
+    ST=${READ%%|*}; REST=${READ#*|}; INTENT=${REST%%|*}; MSG=${REST#*|}
+    case "$ST" in
+        running) log "running"; break ;;
+        exited)  log "FAILED: instance exited during startup — $MSG"; DEAD=1; break ;;
+    esac
+    if [ "$INTENT" = "stopped" ] && [ -n "$MSG" ]; then
+        log "FAILED: host refused to start — $MSG"; DEAD=1; break
+    fi
+    sleep 10
+done
+if [ "${DEAD:-0}" = "1" ] || [ "$(date +%s)" -ge "$DEADLINE" ]; then
+    log "destroying the bad instance; re-run to try another host"
+    vastai destroy instance "$INSTANCE" -y >/dev/null 2>&1
+    rm -f .vast_instance
+    exit 1
+fi
 
 # Verify the bid actually took. A silently-on-demand instance costs 2-4x what
 # you planned and nothing else in this script would notice.
@@ -143,5 +174,4 @@ log "Check status:  vastai show instance $INSTANCE"
 log "SSH:           vastai ssh-url $INSTANCE"
 log "Logs (once up): vastai logs $INSTANCE"
 log "Destroy:       ./scripts/vast/vast_destroy.sh $INSTANCE"
-echo "$INSTANCE" > .vast_instance
 log "Saved instance id to .vast_instance"
