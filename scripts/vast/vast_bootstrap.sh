@@ -97,8 +97,11 @@ fi
 # therefore already on disk after the clone — nothing to download.
 if [ "$VARIANT" = "lora" ]; then
     log "VARIANT=lora: training data is in the repo at $LORA_DATA"
-    [ -f "$LORA_DATA" ] || { log "MISSING $LORA_DATA — is REPO_REF=$REPO_REF the right branch?"; exit 1; }
-    log "  $(wc -l < "$LORA_DATA") examples"
+    # LORA_DATA may name several files; test each rather than the whole string.
+    for f in $LORA_DATA; do
+        [ -f "$f" ] || { log "MISSING $f — is REPO_REF=$REPO_REF the right branch?"; exit 1; }
+        log "  $f: $(wc -l < "$f") examples"
+    done
 else
 
 DATA_DIR="data/datasets/$DATASET"
