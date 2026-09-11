@@ -21,6 +21,39 @@ before — mypy always exited first and masked it.
       them one, promote a single rule at a time; most of the noise is
       `Config(**overrides)` in test helpers.
 
+## LoRA v1 result — voice landed, tools did not (2026-09-11)
+
+Trained on an A100, 344 steps / 2 epochs over 2,893 teacher examples,
+eval_loss 1.556. Adapter: `younissk/nanoBeard-pirate-lora`.
+Reports in `runs/evals/`.
+
+| | gsm8k | tool right choice | voice |
+|---|---|---|---|
+| stock | **54.0%** | **66.7%** | 2.9% |
+| prompt-only (no LoRA) | 41.0% | 0.0% | 100% |
+| **lora, no system prompt** | 40.0% | 50.0% | 8.2% |
+| **lora + training system prompt** | 42.0% | **0.0%** | **99.4%** |
+
+**Does not ship.** Voice is exactly right — 99.4%, matching the teacher data's
+99.0%. But tool calling is gone and gsm8k is down 12 points, so the model trades
+capability for accent, which is the thing the whole eval exists to prevent.
+
+Root cause, measured from the training mix: the supervised-token budget is
+**20 : 1 against tool calling**. Only the `<tool_call>` JSON teaches calling
+(~16k tokens); everything else — chat, math, and the *prose half of the tool
+examples themselves* — teaches "answer in prose" (~336k tokens). The model
+learned the dominant pattern and now narrates the tool instead of calling it:
+"Ahoy matey! I'll play ye some old-timey sea shanties" with `tool_calls: None`.
+
+- [ ] **Rebalance and retrain.** Options, cheapest first: mask the final prose
+      turn in tool examples so they only teach the call; raise the tool share
+      well above 25%; drop `tool_none` (182 examples that explicitly teach *not*
+      calling, into a model already biased that way).
+- [ ] Consider evaluating both with and without the system prompt every time.
+      Without it the LoRA keeps 50% tool choice; with it, 0%. The conditioning
+      is entirely on the pirate system prompt, which the no-prompt row would
+      have hidden.
+
 ## Fine-tune plan — measured baselines, 2026-09-11
 
 Qwen3-0.6B Q4_K_M, 200 GSM8K problems, 15 tool scenarios, 171 voice prompts.
