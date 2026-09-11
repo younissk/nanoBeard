@@ -23,9 +23,11 @@ DATASET="${DATASET:-tiny_pirate_stories}"
 # card" swapped twice inside one session. Pin a single name here to override,
 # e.g. GPU=RTX_5090 if you need the 32GB.
 GPU="${GPU:-RTX_4090,RTX_5090,RTX_3090}"
-# -devel, not -runtime: it ships gcc/nvcc, which torch.compile's inductor
-# backend needs to JIT kernels. CUDA 12.8 is also the floor for sm_120 (RTX
-# 5090). The image torch is irrelevant — `uv sync` installs the pinned one.
+# -devel, not -runtime, for two reasons. It ships gcc/nvcc, which torch.compile's
+# inductor backend needs to JIT kernels. And the -runtime images have no openssh
+# at all: Vast's own /.launch dies with "ssh: command not found" and the instance
+# is unreachable for its whole life. CUDA 12.8 is also the floor for sm_120
+# (RTX 5090). The image torch is irrelevant — `uv sync` installs the pinned one.
 IMAGE="${IMAGE:-pytorch/pytorch:2.11.0-cuda12.8-cudnn9-devel}"
 DISK_GB="${DISK_GB:-50}"
 # Interruptible (bid) instances run 35-70% under on-demand and can be evicted
