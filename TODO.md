@@ -21,6 +21,40 @@ before — mypy always exited first and masked it.
       them one, promote a single rule at a time; most of the noise is
       `Config(**overrides)` in test helpers.
 
+## LoRA v2 — rebalanced, much better, still not shippable (2026-09-11)
+
+Same recipe with three changes: `mask_tool_prose` (the tool examples' own
+summaries stopped competing with their calls), 1,311 extra tool examples, and
+caps `chat=400 math=300 tool_none=100`. Supervised-token budget moved from an
+effective ~3.6% on tool calls to **29.8%**. 2,334 examples, eval_loss 0.674.
+Adapter: `younissk/nanoBeard-pirate-lora-v2`.
+
+| | gsm8k | tool right choice | voice |
+|---|---|---|---|
+| stock | **54.0%** | **66.7%** | 2.9% |
+| v1 + system prompt | 42.0% | 0.0% | 99.4% |
+| **v2 + system prompt** | 48.0% | **33.3%** | **100%** |
+| v2, no system prompt | 38.0% | 58.3% | 3.6% |
+
+The rebalance worked and the direction is confirmed — tool calling went 0% ->
+33.3%, gsm8k recovered half its loss. Behaviour is correct in kind: it calls
+`play_music({"track": "sea shanties"})` for a tool request and stays in
+character, no call, for "I had a rough day at work."
+
+Still fails the ship rule: tools are 33 points below stock, gsm8k 6 points.
+
+**The remaining gap is specifically the persona prompt.** Without it the model
+holds 58.3% tool choice (stock 66.7%); with it, 33.3%. So the LoRA did not
+damage tool calling in general — pirate conditioning suppresses it, exactly as
+it does in the untrained model, just less severely now.
+
+- [ ] **v3: push the tool share further** (`chat=250 math=200`, tool ~40% of
+      budget) and see where the curve bends. Each round is ~$0.35 and ~4 minutes
+      of A100 time now the path works.
+- [ ] If the curve flattens before tools reach stock, the honest answer may be
+      to ship the persona as a *lighter* system prompt, or accept a documented
+      trade and state it in the model card.
+
 ## LoRA v1 result — voice landed, tools did not (2026-09-11)
 
 Trained on an A100, 344 steps / 2 epochs over 2,893 teacher examples,
