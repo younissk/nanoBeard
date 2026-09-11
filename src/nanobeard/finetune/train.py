@@ -30,7 +30,8 @@ TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj"
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--data", default="runs/distill/train.jsonl")
+    ap.add_argument("--data", nargs="+", default=["runs/distill/train.jsonl"],
+                    help="One or more JSONL files; they are concatenated")
     ap.add_argument("--out", default="runs/lora/pirate-v1")
     ap.add_argument("--base", default=BASE_MODEL)
     ap.add_argument("--rank", type=int, default=16)
@@ -46,6 +47,12 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--device", default=None, help="cuda | mps | cpu (default: best available)")
     ap.add_argument("--limit", type=int, default=None, help="Use only N examples (smoke runs)")
+    ap.add_argument("--cap", action="append", default=None, metavar="KIND=N",
+                    help="Cap examples of a kind, e.g. --cap chat=500 --cap math=300. "
+                         "Balances the supervised-token budget, which example counts do not.")
+    ap.add_argument("--keep-tool-prose", action="store_true",
+                    help="Also supervise the summary turn of tool examples (v1 did; "
+                         "it is 20:1 counter-signal against calling)")
     ap.add_argument("--push-to-hub", default=None, metavar="REPO",
                     help="Upload the adapter here when done, e.g. younissk/nanoBeard-pirate-lora")
     args = ap.parse_args()
@@ -54,7 +61,15 @@ def main() -> None:
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
-    from nanobeard.finetune.data import Collator, build_dataset, describe, load_rows, split
+    from nanobeard.finetune.data import (
+        Collator,
+        build_dataset,
+        describe,
+        load_rows,
+        rebalance,
+        split,
+        token_budget,
+    )
 
     device = args.device or (
         "cuda" if torch.cuda.is_available()
@@ -64,11 +79,21 @@ def main() -> None:
     print(f"base={args.base} device={device}")
 
     tok = AutoTokenizer.from_pretrained(args.base)
-    rows = load_rows(args.data)
+    rows: list[dict] = []
+    for path in args.data:
+        rows += load_rows(path)
+    if args.cap:
+        caps = {k: int(v) for k, v in (c.split("=", 1) for c in args.cap)}
+        before = len(rows)
+        rows = rebalance(rows, caps, seed=args.seed)
+        print(f"rebalanced {before} -> {len(rows)} rows with caps {caps}")
     if args.limit:
         rows = rows[: args.limit]
-    examples = build_dataset(tok, rows, max_len=args.max_len)
+    examples = build_dataset(
+        tok, rows, max_len=args.max_len, mask_tool_prose=not args.keep_tool_prose
+    )
     print(f"\n{len(examples)} usable of {len(rows)} rows\n{describe(examples)}")
+    print(f"\n{token_budget(examples)}")
     if not examples:
         raise SystemExit("no usable examples — check --data and --max-len")
 

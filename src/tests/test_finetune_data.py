@@ -26,7 +26,9 @@ from nanobeard.finetune.data import (
     assistant_spans,
     build_example,
     describe,
+    rebalance,
     split,
+    token_budget,
     turn_markers,
 )
 
@@ -186,8 +188,9 @@ def test_tool_response_is_never_supervised(tok):
     assert "TOOLDATA" not in sup
 
 
-def test_tool_example_supervises_both_assistant_turns(tok):
-    ex = build_example(tok, TOOL)
+def test_tool_example_supervises_both_turns_when_asked(tok):
+    # The v1 behaviour, kept behind a flag so the two mixes stay comparable.
+    ex = build_example(tok, TOOL, mask_tool_prose=False)
     sup = _supervised_text(tok, ex, tok.apply_chat_template(TOOL["messages"], TOOL["tools"]))
     assert "get_stock_price" in sup and "PIRATEREPLY" in sup
 
@@ -213,6 +216,73 @@ def test_markers_are_derived_from_the_template(tok):
     header, end = turn_markers(tok)
     assert header == HEADER, "think block must be trimmed off the header"
     assert end == END
+
+
+# ----- tool-prose masking (the LoRA v1 fix) -----
+def test_tool_prose_is_masked_by_default(tok):
+    """v1 supervised both turns of a tool example, so the summary prose counted
+    against the call. Measured 20:1 counter-signal; the model started narrating
+    the tool instead of calling it."""
+    ex = build_example(tok, TOOL)
+    sup = _supervised_text(tok, ex, tok.apply_chat_template(TOOL["messages"], TOOL["tools"]))
+    assert "get_stock_price" in sup, "the call must still be taught"
+    assert "PIRATEREPLY" not in sup, "the summary must not compete with it"
+
+
+def test_tool_prose_can_be_kept_for_comparison(tok):
+    ex = build_example(tok, TOOL, mask_tool_prose=False)
+    sup = _supervised_text(tok, ex, tok.apply_chat_template(TOOL["messages"], TOOL["tools"]))
+    assert "get_stock_price" in sup and "PIRATEREPLY" in sup
+
+
+def test_masking_does_not_touch_chat_examples(tok):
+    # Only `kind == "tool"` is affected; a chat reply is the whole point.
+    ex = build_example(tok, CHAT, mask_tool_prose=True)
+    sup = _supervised_text(tok, ex, tok.apply_chat_template(CHAT["messages"]))
+    assert "PIRATEREPLY" in sup
+
+
+def test_masking_does_not_touch_tool_none_examples(tok):
+    # tool_none has a single assistant turn: masking "the last" would empty it.
+    row = {**CHAT, "kind": "tool_none"}
+    ex = build_example(tok, row, mask_tool_prose=True)
+    assert ex is not None and ex.n_supervised > 0
+
+
+# ----- rebalancing -----
+def test_caps_limit_each_kind():
+    rows = [{"kind": "chat"}] * 100 + [{"kind": "tool"}] * 50
+    out = rebalance(rows, {"chat": 10})
+    assert sum(1 for r in out if r["kind"] == "chat") == 10
+    assert sum(1 for r in out if r["kind"] == "tool") == 50, "uncapped kinds pass through"
+
+
+def test_cap_above_the_count_is_a_noop():
+    rows = [{"kind": "chat"}] * 5
+    assert len(rebalance(rows, {"chat": 99})) == 5
+
+
+def test_rebalance_is_deterministic():
+    rows = [{"kind": "chat", "i": i} for i in range(50)]
+    assert [r["i"] for r in rebalance(rows, {"chat": 10}, seed=3)] == \
+           [r["i"] for r in rebalance(rows, {"chat": 10}, seed=3)]
+
+
+def test_rebalance_without_caps_keeps_everything():
+    rows = [{"kind": "chat"}] * 7 + [{"kind": "math"}] * 3
+    assert len(rebalance(rows, {})) == 10
+
+
+# ----- token budget reporting -----
+def test_token_budget_reports_shares_not_counts():
+    """Example counts hid the v1 imbalance: a 50/25/25 split by count was 20:1
+    by supervised tokens, because chat replies are long and a tool call is one
+    short line of JSON."""
+    ex = [Example([1] * 100, [1] * 100, "chat")] + [Example([1] * 10, [1] * 10, "tool")] * 4
+    out = token_budget(ex)
+    assert "chat" in out and "tool" in out
+    # 100 chat tokens vs 40 tool tokens despite tool having 4x the examples.
+    assert "71.4%" in out and "28.6%" in out
 
 
 # ----- batching and splitting -----

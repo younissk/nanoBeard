@@ -110,8 +110,22 @@ def assistant_spans(full_text: str, header: str, end: str) -> list[tuple[int, in
     return spans
 
 
-def build_example(tok, row: dict, max_len: int = 2048) -> Example | None:
-    """Tokenize one conversation, supervising only the assistant turns."""
+def build_example(
+    tok, row: dict, max_len: int = 2048, mask_tool_prose: bool = True
+) -> Example | None:
+    """Tokenize one conversation, supervising only the assistant turns.
+
+    `mask_tool_prose` drops the *final* prose turn of a tool example, so the
+    example teaches only "emit the call". Measured on LoRA v1: the supervised
+    budget ran 20:1 against tool calling — ~16k tokens teaching the `<tool_call>`
+    JSON against ~336k teaching prose, of which the tool examples' own summaries
+    were part. The model learned the majority behaviour and started narrating
+    ("Ahoy matey! I'll play ye some sea shanties") with tool_calls: None.
+
+    The cost is real: the model no longer learns to summarise a tool result in
+    character. That is recoverable by prompting; a model that will not call the
+    tool at all is not.
+    """
     messages = row["messages"]
     tools = row.get("tools")
     header, end = turn_markers(tok)
@@ -123,6 +137,10 @@ def build_example(tok, row: dict, max_len: int = 2048) -> Example | None:
     # Dropping one example is cheap; mislabelling it is not.
     if len(spans) != n_assistant:
         return None
+
+    if mask_tool_prose and row.get("kind") == "tool" and len(spans) > 1:
+        # Keep the call turn(s), drop the trailing summary.
+        spans = spans[:-1]
 
     enc = tok(full_text, add_special_tokens=False, return_offsets_mapping=True)
     input_ids = enc["input_ids"]
@@ -140,13 +158,53 @@ def build_example(tok, row: dict, max_len: int = 2048) -> Example | None:
     return Example(input_ids=input_ids, labels=labels, kind=row.get("kind", "?"))
 
 
-def build_dataset(tok, rows: list[dict], max_len: int = 2048) -> list[Example]:
+def build_dataset(
+    tok, rows: list[dict], max_len: int = 2048, mask_tool_prose: bool = True
+) -> list[Example]:
     out = []
     for row in rows:
-        ex = build_example(tok, row, max_len)
+        ex = build_example(tok, row, max_len, mask_tool_prose=mask_tool_prose)
         if ex is not None:
             out.append(ex)
     return out
+
+
+def rebalance(rows: list[dict], caps: dict[str, int], seed: int = 1337) -> list[dict]:
+    """Cap how many examples of each kind survive.
+
+    Example *counts* are a misleading way to balance an SFT mix: a 50/25/25 split
+    by count was 20:1 skewed by supervised tokens, because chat replies are long
+    and a tool call is a short line of JSON. Capping the talkative kinds is the
+    cheapest way to move the gradient budget without generating more data.
+    """
+    import random
+
+    rng = random.Random(seed)
+    by: dict[str, list[dict]] = {}
+    for r in rows:
+        by.setdefault(r.get("kind", "?"), []).append(r)
+    out: list[dict] = []
+    for kind, items in by.items():
+        cap = caps.get(kind)
+        if cap is not None and cap < len(items):
+            items = items[:]
+            rng.shuffle(items)
+            items = items[:cap]
+        out += items
+    rng.shuffle(out)
+    return out
+
+
+def token_budget(examples: list[Example]) -> str:
+    """Supervised tokens per kind — the number that actually sets behaviour."""
+    by: dict[str, int] = {}
+    for ex in examples:
+        by[ex.kind] = by.get(ex.kind, 0) + ex.n_supervised
+    total = sum(by.values()) or 1
+    lines = ["supervised-token budget (this is what the model optimises):"]
+    for kind in sorted(by, key=lambda k: -by[k]):
+        lines.append(f"  {kind:<12}{by[kind]:>9,}  {by[kind] / total:>6.1%}")
+    return "\n".join(lines)
 
 
 def split(examples: list[Example], val_frac: float = 0.05, seed: int = 1337):
