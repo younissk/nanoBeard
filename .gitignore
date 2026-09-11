@@ -25,10 +25,18 @@ runs/*
 !runs/selfplay/
 runs/rejection/*
 runs/selfplay/*
+runs/distill/*
+runs/evals/*
 !runs/rejection/*.jsonl
 !runs/rejection/*.json
 !runs/rejection/*.html
 !runs/selfplay/*.jsonl
+!runs/distill/*.jsonl
+!runs/evals/*.json
+# Teacher-generated SFT data: small, and the thing the fine-tune is trained on,
+# so it wants to be reviewable in a diff alongside the eval reports.
+!runs/distill/
+!runs/evals/
 *.pt
 *.bin
 *.safetensors

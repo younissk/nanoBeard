@@ -1,4 +1,4 @@
-.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff \
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
         vast-offers vast-launch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
@@ -34,6 +34,7 @@ help:
 	@echo "  make chat                   Browser chat UI over every exported GGUF"
 	@echo "  make fertility              Tokens/char by domain (REFERENCE=Qwen/Qwen3-0.6B)"
 	@echo "  make autobatch              Measure tok/s vs micro-batch on this GPU"
+	@echo "  make distill DISTILL_N=40   Generate pirate SFT data with the Kimi teacher"
 	@echo "  make evals [PERSONA=1]      gsm8k + tool-calling + pirate-voice gates"
 	@echo "  make evals-diff A=.. B=..   Compare two eval reports"
 	@echo ""
@@ -156,6 +157,18 @@ publish-gguf:
 		--gguf-dir $(GGUF_OUT) --repo $(GGUF_REPO) --title $(GGUF_TITLE) \
 		--params $(GGUF_PARAMS) --val-loss $(GGUF_VAL_LOSS) \
 		--base-model $(GGUF_BASE_MODEL) $(if $(PUSH),--push,)
+
+# ----- Teacher data generation -----
+# Kimi writes the pirate SFT data. Thinking is OFF by default: measured 5.2x
+# fewer output tokens, better yield (40/40 vs 38/40) and no loss of voice.
+# Always run a small --n first and read it before spending on the full set.
+
+DISTILL_N ?= 40
+DISTILL_OUT ?= runs/distill/sample.jsonl
+
+distill:
+	$(UV) run python -m nanobeard.distill.generate --out $(DISTILL_OUT) --n $(DISTILL_N) \
+		$(if $(THINKING),--thinking,)
 
 # ----- Capability gates -----
 # Run before AND after every fine-tune. Voice going up is not a result; voice
