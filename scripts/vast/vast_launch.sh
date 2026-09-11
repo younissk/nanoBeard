@@ -98,6 +98,8 @@ export WANDB_API_KEY='${WANDB_API_KEY:-}'
 export CONFIG='$CONFIG'
 export VARIANT='$VARIANT'
 export DATASET='$DATASET'
+export REPO_URL='$REPO_URL'
+export REPO_REF='$REPO_REF'
 export LORA_DATA='${LORA_DATA:-runs/distill/train.jsonl}'
 export LORA_OUT='${LORA_OUT:-runs/lora/pirate-v1}'
 export LORA_EPOCHS='${LORA_EPOCHS:-2}'
@@ -123,7 +125,7 @@ INSTANCE=$(vastai create instance "$OFFER" \
     --ssh \
     "${PRICE_ARGS[@]}" \
     --onstart-cmd "$ONSTART" \
-    --raw 2>/dev/null | python -c "import json,sys; print(json.load(sys.stdin)['new_contract'])")
+    --raw 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['new_contract'])")
 
 log "Created instance $INSTANCE"
 
@@ -131,7 +133,7 @@ log "Created instance $INSTANCE"
 # you planned and nothing else in this script would notice.
 if [ "$INTERRUPTIBLE" = "1" ]; then
     ACTUAL=$(vastai show instance "$INSTANCE" --raw 2>/dev/null \
-        | python -c "import json,sys; d=json.load(sys.stdin); print(f\"{d.get('is_bid')}|{d.get('dph_total')}\")" 2>/dev/null || echo "?|?")
+        | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d.get('is_bid')}|{d.get('dph_total')}\")" 2>/dev/null || echo "?|?")
     case "$ACTUAL" in
         True*) log "Confirmed interruptible at \$${ACTUAL#*|}/hr" ;;
         *)     log "WARNING: asked for interruptible, instance reports is_bid=${ACTUAL%%|*}, dph=${ACTUAL#*|}." ;;

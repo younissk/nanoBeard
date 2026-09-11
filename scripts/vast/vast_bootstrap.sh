@@ -16,6 +16,10 @@ CONFIG="${CONFIG:-sloop}"
 VARIANT="${VARIANT:-gpu}"
 DATASET="${DATASET:-tiny_pirate_stories}"
 REPO_URL="${REPO_URL:-https://github.com/younissk/nanoBeard}"
+# Branch/tag to train from. Without this the clone silently takes the default
+# branch, which is how a box ends up running main's code against a branch's
+# plan — the failure surfaces much later as a missing dependency group.
+REPO_REF="${REPO_REF:-main}"
 REPO_DIR="${REPO_DIR:-$HOME/pirate_llm}"
 DATA_HF_REPO="${DATA_HF_REPO:-younissk/nanobeard-data-${DATASET}}"
 # VARIANT=lora only.
@@ -46,11 +50,14 @@ fi
 
 # 3. Clone repo.
 if [ ! -d "$REPO_DIR/.git" ]; then
-    log "Cloning $REPO_URL -> $REPO_DIR"
-    git clone "$REPO_URL" "$REPO_DIR"
+    log "Cloning $REPO_URL ($REPO_REF) -> $REPO_DIR"
+    git clone --branch "$REPO_REF" "$REPO_URL" "$REPO_DIR"
 fi
 cd "$REPO_DIR"
-git pull --ff-only || true
+git fetch origin "$REPO_REF" --depth=50 || true
+git checkout "$REPO_REF" 2>/dev/null || git checkout -B "$REPO_REF" "origin/$REPO_REF"
+git reset --hard "origin/$REPO_REF" || true
+log "on $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 
 # 4. Sync deps.
 # Pin Python 3.12 explicitly: .python-version is gitignored, so a fresh box
