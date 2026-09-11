@@ -114,6 +114,9 @@ curl -fsSL $REPO_URL/raw/$REPO_REF/scripts/vast/vast_bootstrap.sh | bash
 EOF
 )
 
+# macOS ships bash 3.2, where `set -u` treats "${arr[@]}" on an EMPTY array as
+# an unbound variable and aborts. ${arr[@]+"${arr[@]}"} is the portable form.
+# Getting this wrong made every on-demand launch die silently.
 PRICE_ARGS=()
 if [ "$INTERRUPTIBLE" = "1" ]; then
     # The flag is --bid_price. --price is a different thing and passing it
@@ -128,9 +131,19 @@ INSTANCE=$(vastai create instance "$OFFER" \
     --image "$IMAGE" \
     --disk "$DISK_GB" \
     --ssh \
-    "${PRICE_ARGS[@]}" \
+    ${PRICE_ARGS[@]+"${PRICE_ARGS[@]}"} \
     --onstart-cmd "$ONSTART" \
-    --raw 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['new_contract'])")
+    --raw 2>&1 | tee /tmp/vast_create.json | python3 -c "
+import json,sys
+raw = sys.stdin.read()
+try:
+    print(json.loads(raw)['new_contract'])
+except Exception:
+    sys.stderr.write('create failed: ' + raw[:400])
+")
+
+# Swallowing this is what hid a bash-3.2 array bug for six launches.
+[ -n "$INSTANCE" ] || { log "instance creation failed (see above)"; exit 1; }
 
 log "Created instance $INSTANCE"
 echo "$INSTANCE" > .vast_instance
