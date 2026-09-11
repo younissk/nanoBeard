@@ -5,6 +5,6 @@ set -euo pipefail
 INSTANCE="${1:-$(cat .vast_instance 2>/dev/null || true)}"
 [ -n "$INSTANCE" ] || { echo "usage: $0 <instance-id> (or save one to .vast_instance)"; exit 1; }
 
-vastai destroy instance "$INSTANCE"
+vastai destroy instance "$INSTANCE" -y
 rm -f .vast_instance
 echo "Destroyed $INSTANCE"

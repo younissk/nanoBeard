@@ -45,8 +45,18 @@ destroy_once() {
     [ "$DESTROYED" = "1" ] && return 0
     DESTROYED=1
     log "destroying instance $INSTANCE"
-    vastai destroy instance "$INSTANCE" 2>&1 | sed 's/^/  /'
+    # -y is load-bearing: without it the CLI prompts "[y/N]", reads EOF from a
+    # detached watchdog, prints "Aborted." and leaves the instance billing. The
+    # whole point of this script is that it cannot do that.
+    vastai destroy instance "$INSTANCE" -y 2>&1 | sed 's/^/  /'
     rm -f .vast_instance 2>/dev/null || true
+    sleep 5
+    if vastai show instance "$INSTANCE" --raw 2>/dev/null \
+        | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('id') else 1)" 2>/dev/null; then
+        log "WARNING: instance $INSTANCE still exists after destroy — check manually"
+    else
+        log "confirmed destroyed"
+    fi
 }
 # Covers Ctrl-C, SIGTERM, and any unexpected exit path.
 trap destroy_once EXIT INT TERM
