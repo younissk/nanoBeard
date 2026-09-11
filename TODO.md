@@ -21,6 +21,34 @@ before — mypy always exited first and masked it.
       them one, promote a single rule at a time; most of the noise is
       `Config(**overrides)` in test helpers.
 
+## Fine-tune plan — measured baselines, 2026-09-11
+
+Qwen3-0.6B Q4_K_M, 200 GSM8K problems, 15 tool scenarios, 171 voice prompts.
+`make evals` reproduces; reports in `runs/evals/`.
+
+| | gsm8k | tool right choice | pirate voice |
+|---|---|---|---|
+| stock | **54.0%** | **66.7%** | 2.9% |
+| mild persona prompt | — | 50.0% | 4.1% |
+| heavy persona prompt | 41.0% | **0.0%** | **100%** |
+
+**Prompting cannot buy voice and tools at the same time.** The heavy persona
+takes tool calls from 8/15 to **0/15** — it does not degrade tool use, it
+abolishes it ("never break character" outranks the tool schema) — and costs 13
+points of GSM8K on the way. The mild version keeps half the tool calls and gets
+almost no voice. That is the whole justification for fine-tuning rather than
+shipping a system prompt.
+
+- [ ] **SFT data must include pirate-voiced tool calls and pirate-voiced CoT.**
+      Not a precaution any more — measured. A pirate-only SFT set will reproduce
+      the 0% collapse above, because that is exactly what conditioning on heavy
+      pirate style does to this model today.
+- [ ] Re-run `make evals` after the LoRA and diff against `runs/evals/stock.json`.
+      Ship only if voice is up and gsm8k / tool choice / restraint hold.
+- [ ] Do NOT train on `runs/rejection/` or `runs/selfplay/` outputs — they came
+      from frigate-360M, which is far weaker than Qwen3-0.6B. The prompts and
+      harness are reusable; the completions would distil downward.
+
 ## Decide before the next GPU run
 
 - [ ] **Check `make vast-offers` before every run — the ranking is not stable.**

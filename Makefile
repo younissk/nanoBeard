@@ -1,4 +1,4 @@
-.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch \
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
         vast-offers vast-launch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
@@ -34,6 +34,8 @@ help:
 	@echo "  make chat                   Browser chat UI over every exported GGUF"
 	@echo "  make fertility              Tokens/char by domain (REFERENCE=Qwen/Qwen3-0.6B)"
 	@echo "  make autobatch              Measure tok/s vs micro-batch on this GPU"
+	@echo "  make evals [PERSONA=1]      gsm8k + tool-calling + pirate-voice gates"
+	@echo "  make evals-diff A=.. B=..   Compare two eval reports"
 	@echo ""
 	@echo "  make publish                Push CONFIG ckpt to its HF model repo"
 	@echo "  make publish-space          Push playground Space"
@@ -154,6 +156,23 @@ publish-gguf:
 		--gguf-dir $(GGUF_OUT) --repo $(GGUF_REPO) --title $(GGUF_TITLE) \
 		--params $(GGUF_PARAMS) --val-loss $(GGUF_VAL_LOSS) \
 		--base-model $(GGUF_BASE_MODEL) $(if $(PUSH),--push,)
+
+# ----- Capability gates -----
+# Run before AND after every fine-tune. Voice going up is not a result; voice
+# going up while gsm8k and tool-calling hold is.
+
+EVAL_MODEL ?= export/gguf/qwen3-0.6b/Qwen3-0.6B-Q4_K_M.gguf
+EVAL_N ?= 200
+EVAL_WORKERS ?= 6
+
+evals:
+	$(UV) run python -m nanobeard.evals.run --model $(EVAL_MODEL) \
+		--n-gsm8k $(EVAL_N) --workers $(EVAL_WORKERS) \
+		$(if $(PERSONA),--persona,) $(if $(LABEL),--label $(LABEL),)
+
+# make evals-diff A=runs/evals/stock.json B=runs/evals/lora.json
+evals-diff:
+	$(UV) run python -m nanobeard.evals.run --compare $(A) $(B)
 
 # ----- Throughput tuning -----
 # Micro-batch is the last throughput lever after bf16 + flash + compile, and it

@@ -95,9 +95,14 @@ def _port_is_free(port: int, host: str = "127.0.0.1") -> bool:
 class LlamaServer:
     """One llama-server subprocess, restartable against a different GGUF."""
 
-    def __init__(self, port: int = DEFAULT_LLAMA_PORT, ctx: int = DEFAULT_CTX):
+    def __init__(
+        self, port: int = DEFAULT_LLAMA_PORT, ctx: int = DEFAULT_CTX, slots: int = 1
+    ):
         self.port = port
-        self.ctx = ctx
+        # llama-server splits -c across slots, so an N-slot server needs N times
+        # the context to give each request the window the caller asked for.
+        self.ctx = ctx * slots
+        self.slots = slots
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
         self._lock = threading.Lock()
@@ -117,7 +122,7 @@ class LlamaServer:
                 )
             self.proc = subprocess.Popen(
                 [binary, "-m", model, "--host", "127.0.0.1", "--port", str(self.port),
-                 "-c", str(self.ctx), "-np", "1", "--no-webui"],
+                 "-c", str(self.ctx), "-np", str(self.slots), "--no-webui"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
