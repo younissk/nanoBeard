@@ -44,7 +44,14 @@ def _load_export_gguf():
     return mod
 
 
-def merge(adapter: Path, out: Path, base: str | None = None) -> Path:
+def merge(adapter: Path, out: Path, base: str | None = None, dtype: str = "bfloat16") -> Path:
+    """Fold the adapter into the base weights.
+
+    bfloat16, not float32: at fp32 a 0.6B model is ~2.4GB of weights plus
+    another copy while saving, which is enough to take down an 8GB laptop — it
+    did. The GGUF converter emits f16 from these weights regardless, so the
+    extra precision buys nothing downstream.
+    """
     import torch
     from peft import PeftConfig, PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -53,14 +60,17 @@ def merge(adapter: Path, out: Path, base: str | None = None) -> Path:
     base_id = base or cfg.base_model_name_or_path
     print(f"base={base_id}\nadapter={adapter}")
 
-    base_model = AutoModelForCausalLM.from_pretrained(base_id, dtype=torch.float32)
+    torch_dtype = getattr(torch, dtype)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_id, dtype=torch_dtype, low_cpu_mem_usage=True
+    )
     peft_model = PeftModel.from_pretrained(base_model, str(adapter))
     # nn.Module.__getattr__ is typed `Tensor | Module`, so the merge helper is
     # invisible to the checker without a cast.
     merged = cast(Any, peft_model).merge_and_unload()
 
     out.mkdir(parents=True, exist_ok=True)
-    merged.save_pretrained(str(out))
+    merged.save_pretrained(str(out), safe_serialization=True, max_shard_size="500MB")
     # The tokenizer saved next to the adapter wins: it is the one the data was
     # rendered with, and a mismatch here is the silent-gibberish failure mode.
     src = adapter if (adapter / "tokenizer.json").exists() else Path(base_id)
@@ -105,11 +115,14 @@ def main() -> None:
     ap.add_argument("--llama-cpp", default=str(DEFAULT_LLAMA_CPP))
     ap.add_argument("--converter-python", default=None)
     ap.add_argument("--keep-f16", action="store_true")
+    ap.add_argument("--dtype", default="bfloat16",
+                    help="Merge precision. float32 doubles peak RAM for no gain: "
+                         "the GGUF converter emits f16 either way.")
     args = ap.parse_args()
 
     adapter = Path(args.adapter)
     out = Path(args.out) if args.out else adapter.with_name(adapter.name + "-merged")
-    merge(adapter, out, args.base)
+    merge(adapter, out, args.base, dtype=args.dtype)
 
     if not args.gguf:
         return

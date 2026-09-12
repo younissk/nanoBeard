@@ -21,6 +21,46 @@ before — mypy always exited first and masked it.
       them one, promote a single rule at a time; most of the noise is
       `Config(**overrides)` in test helpers.
 
+## LoRA v4 — ships (2026-09-12)
+
+`younissk/nanoBeard-pirate-lora-v4`. 4,621 examples, 2 epochs, eval_loss 0.627.
+Budget: tool 31.3 / chat 27.9 / math 25.4 / tool_none 15.4.
+
+| | gsm8k | tool choice | tool args | restraint | voice |
+|---|---|---|---|---|---|
+| stock | 54.0% | 66.7% | 66.7% | 100% | 2.9% |
+| v1 | 42.0% | 0.0% | 0.0% | 100% | 99.4% |
+| v2 | 48.0% | 33.3% | 33.3% | 100% | 100% |
+| v3 | 39.5% | **100%** | **100%** | 66.7% | 100% |
+| **v4** | **51.0%** | **83.3%** | **83.3%** | **100%** | **100%** |
+
+**Passes the ship rule.** Voice +97.1, tool choice +16.7 and tool args +16.7
+*above stock*, restraint held at 100%. gsm8k is 3 points lower, which McNemar on
+the 200 paired problems puts at **p=0.525** — 34 disagreements one way, 28 the
+other, i.e. indistinguishable from noise at this sample size (one SE is ~3.5
+points).
+
+What each round taught, since the path matters more than the endpoint:
+
+- **v1** — mix balanced by example *count*, which hid a 20:1 skew in supervised
+  tokens. Tools collapsed to 0%.
+- **v2** — masked the tool examples' own summaries, added examples, capped the
+  talkative kinds. Tools 0 -> 33%.
+- **v3** — the real blocker was diversity, not volume: 1,534 tool examples were
+  8 tools and 16 sentences repeated ~96x each, so the model memorised phrasings.
+  Swapping in 2,307 public examples with 1,274 distinct tools took tool choice
+  to 100% — and then it started calling `set_timer` for "I'm feeling a bit down
+  today", because nothing taught restraint.
+- **v4** — negatives built for free from existing prose rows (chat/math examples
+  with irrelevant tools attached) restored restraint to 100% while keeping most
+  of the calling.
+
+- [ ] Remaining 16.7% tool miss is real, not noise: "Text Ana that the ship
+      sails at dawn" answers in prose instead of calling `send_message`.
+      Multi-required-arg calls look like the weak spot; more of those in the mix
+      is the obvious next lever.
+- [ ] Publish the merged GGUF and update `hf/model_card.md` with this table.
+
 ## LoRA v2 — rebalanced, much better, still not shippable (2026-09-11)
 
 Same recipe with three changes: `mask_tool_prose` (the tool examples' own
