@@ -60,6 +60,18 @@ What each round taught, since the path matters more than the endpoint:
       Multi-required-arg calls look like the weak spot; more of those in the mix
       is the obvious next lever.
 - [ ] Publish the merged GGUF and update `hf/model_card.md` with this table.
+- [ ] **The LoRA suppressed thinking.** Stock Qwen3 streams `reasoning_content`
+      when asked; v4 emits none, because every training example rendered with the
+      template's *empty* `<think></think>` block (the teacher ran with thinking
+      disabled). Harmless for a 0.6B that mostly gains latency from it, but it is
+      a capability the fine-tune removed silently — worth a line in the model
+      card, and worth keeping some thinking traces in the mix if it is ever
+      wanted back.
+- [ ] Tool-result summaries lost the pirate voice: after a tool returns, v4 says
+      "The weather in Vienna in celsius is 14°C" in plain English. Expected —
+      `mask_tool_prose` deliberately stopped supervising that turn — but it is
+      the visible cost of the v2 fix, and a small number of unmasked tool
+      summaries would probably buy it back.
 
 ## LoRA v2 — rebalanced, much better, still not shippable (2026-09-11)
 

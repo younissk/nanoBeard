@@ -213,19 +213,43 @@ def build_payload(turns: list[dict], opts: dict) -> dict:
     }
 
 
+def to_messages(turns: list[dict], system: str = "") -> list[dict]:
+    """UI turns -> OpenAI messages.
+
+    Tool turns matter: a model that called a tool needs to see its own call and
+    the result, or the follow-up answer is generated blind and the whole point of
+    testing the loop is lost.
+    """
+    messages: list[dict] = []
+    if system.strip():
+        messages.append({"role": "system", "content": system.strip()})
+    for t in turns:
+        role = t.get("role")
+        if role == "tool":
+            messages.append({
+                "role": "tool",
+                "name": t.get("name") or "tool",
+                "content": t.get("text") or "",
+            })
+        elif role == "bot" and t.get("tool_calls"):
+            messages.append({
+                "role": "assistant",
+                "content": t.get("text") or "",
+                "tool_calls": t["tool_calls"],
+            })
+        else:
+            messages.append({
+                "role": "user" if role == "user" else "assistant",
+                "content": t.get("text") or "",
+            })
+    return messages
+
+
 def build_chat_payload(turns: list[dict], opts: dict) -> dict:
     """/v1/chat/completions payload, so the GGUF's own template is applied."""
-    messages: list[dict] = []
-    system = (opts.get("system") or "").strip()
-    if system:
-        messages.append({"role": "system", "content": system})
-    for t in turns:
-        messages.append({
-            "role": "user" if t["role"] == "user" else "assistant",
-            "content": t["text"],
-        })
-    return {
-        "messages": messages,
+    payload_tools = opts.get("tools")
+    out = {
+        "messages": to_messages(turns, opts.get("system") or ""),
         "max_tokens": int(opts.get("max_tokens", 200)),
         "temperature": float(opts.get("temperature", 0.8)),
         "top_p": float(opts.get("top_p", 0.95)),
@@ -235,6 +259,9 @@ def build_chat_payload(turns: list[dict], opts: dict) -> dict:
         "chat_template_kwargs": {"enable_thinking": bool(opts.get("thinking"))},
         "stream": True,
     }
+    if payload_tools:
+        out["tools"] = payload_tools
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -322,15 +349,20 @@ class ChatHandler(BaseHTTPRequestHandler):
         if not turns:
             self._json({"error": "no turns"}, 400)
             return
+        if req.get("tools") and self.api != "chat":
+            self._json({"error": "tools need --api chat"}, 400)
+            return
         if not self.attached and (self.llama is None or self.llama.model is None):
             self._json({"error": "no model loaded — pick one first"}, 409)
             return
 
         backend = self.backend
         budget = DEFAULT_CTX - REPLY_HEADROOM - int(req.get("max_tokens", 200))
-        # Tokenizer endpoint unreachable -> skip trimming, let the server truncate.
-        with contextlib.suppress(urllib.error.URLError, TimeoutError, OSError):
-            turns = trim_turns(turns, budget, lambda t: _token_count(backend, t))
+        # Trimming renders the frigate transcript, which only makes sense there.
+        # In chat mode llama-server owns the template and its own context window.
+        if self.api != "chat":
+            with contextlib.suppress(urllib.error.URLError, TimeoutError, OSError):
+                turns = trim_turns(turns, budget, lambda t: _token_count(backend, t))
 
         if self.api == "chat":
             payload = build_chat_payload(turns, req)
@@ -361,7 +393,20 @@ class ChatHandler(BaseHTTPRequestHandler):
                     if self.api == "chat":
                         choice = (chunk.get("choices") or [{}])[0]
                         delta = choice.get("delta") or {}
-                        self._send_event({"content": delta.get("content") or ""})
+                        # Some builds stream the chain of thought in its own
+                        # field; others leave it inline in <think> tags for the
+                        # client to split out.
+                        if delta.get("reasoning_content"):
+                            self._send_event({"thinking": delta["reasoning_content"]})
+                        if delta.get("content"):
+                            self._send_event({"content": delta["content"]})
+                        for tc in delta.get("tool_calls") or []:
+                            fn = tc.get("function") or {}
+                            self._send_event({"tool_call": {
+                                "index": tc.get("index", 0),
+                                "name": fn.get("name") or "",
+                                "arguments": fn.get("arguments") or "",
+                            }})
                         if choice.get("finish_reason"):
                             self._send_event({"done": True, "reason": choice["finish_reason"]})
                             return

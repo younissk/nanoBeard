@@ -17,8 +17,10 @@ import pytest
 from nanobeard.chat.server import (
     DEFAULT_CTX,
     REPLY_HEADROOM,
+    build_chat_payload,
     build_payload,
     discover_models,
+    to_messages,
     trim_turns,
 )
 from nanobeard.rejection.generate import STOPS
@@ -139,6 +141,54 @@ def test_defaults_fill_in_for_a_bare_request():
     p = build_payload([{"role": "user", "text": "x"}], {})
     assert p["n_predict"] == 200
     assert 0 < p["temperature"] <= 2
+
+
+# ----- chat-template mode (the Qwen3 line) -----
+def test_system_prompt_becomes_the_first_message():
+    msgs = to_messages([{"role": "user", "text": "hi"}], system="  be a pirate  ")
+    assert msgs[0] == {"role": "system", "content": "be a pirate"}
+
+
+def test_empty_system_prompt_is_omitted():
+    # An empty system message is not the same as none: it can flip the template
+    # into a different branch, and "no persona" is a comparison people make.
+    assert to_messages([{"role": "user", "text": "hi"}], system="   ")[0]["role"] == "user"
+
+
+def test_bot_turns_map_to_assistant():
+    msgs = to_messages([{"role": "user", "text": "a"}, {"role": "bot", "text": "b"}])
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+
+
+def test_tool_result_turns_keep_their_name():
+    msgs = to_messages([
+        {"role": "user", "text": "weather?"},
+        {"role": "bot", "text": "", "tool_calls": [
+            {"type": "function", "function": {"name": "get_weather", "arguments": "{}"}}]},
+        {"role": "tool", "name": "get_weather", "text": '{"temp": 14}'},
+    ])
+    assert msgs[1]["tool_calls"], "the model must see its own call"
+    assert msgs[2] == {"role": "tool", "name": "get_weather", "content": '{"temp": 14}'}
+
+
+def test_tools_are_only_sent_when_offered():
+    # None rather than [] so the key is absent: an empty tools list still pushes
+    # the template down its tool branch.
+    assert "tools" not in build_chat_payload([{"role": "user", "text": "hi"}], {})
+    assert "tools" not in build_chat_payload([{"role": "user", "text": "hi"}], {"tools": None})
+    p = build_chat_payload([{"role": "user", "text": "hi"}], {"tools": [{"type": "function"}]})
+    assert p["tools"] == [{"type": "function"}]
+
+
+def test_thinking_is_off_unless_requested():
+    p = build_chat_payload([{"role": "user", "text": "hi"}], {})
+    assert p["chat_template_kwargs"] == {"enable_thinking": False}
+    p = build_chat_payload([{"role": "user", "text": "hi"}], {"thinking": True})
+    assert p["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+def test_chat_payload_streams():
+    assert build_chat_payload([{"role": "user", "text": "hi"}], {})["stream"] is True
 
 
 def test_reply_headroom_leaves_room_inside_the_context():

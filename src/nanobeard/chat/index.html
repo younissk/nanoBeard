@@ -36,9 +36,9 @@
   label { font-size: 12px; color: var(--tan); display: inline-flex; gap: 5px; align-items: center; }
   input[type=number] { width: 68px; }
 
-  #sysbox { padding: 10px 16px; background: #241810; border-bottom: 1px solid var(--rope); }
-  #sysbox label { display: block; margin-bottom: 5px; }
-  #sysbox textarea {
+  #sysbox, #toolbox { padding: 10px 16px; background: #241810; border-bottom: 1px solid var(--rope); }
+  #sysbox label, #toolbox label { display: block; margin-bottom: 5px; }
+  #sysbox textarea, #toolbox textarea {
     width: 100%; font: inherit; font-size: 13px; resize: vertical;
     background: var(--rope-dark); color: var(--parchment);
     border: 1px solid var(--rope); border-radius: 5px; padding: 8px;
@@ -59,6 +59,23 @@
   .msg.user .text { color: var(--tan); }
   .note { color: var(--muted); font-size: 13px; font-style: italic; }
   .err { color: #e07a5f; }
+  .think {
+    border-left: 2px solid var(--muted); padding: 4px 0 4px 10px; margin-bottom: 8px;
+    color: var(--muted); font-size: 13px; font-style: italic; white-space: pre-wrap;
+  }
+  .think-label { font-style: normal; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+  .toolcall {
+    border: 1px solid var(--gold); border-radius: 5px; padding: 8px 10px; margin: 6px 0;
+    background: rgba(184,134,11,.10); font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .toolcall .fn { color: var(--gold-light); }
+  .toolresult { display: flex; gap: 6px; margin-top: 6px; }
+  .toolresult input {
+    flex: 1; font: inherit; font-size: 12.5px; font-family: ui-monospace, Menlo, monospace;
+    background: var(--rope-dark); color: var(--parchment);
+    border: 1px solid var(--rope); border-radius: 4px; padding: 5px 7px;
+  }
   .cursor::after { content: "▍"; color: var(--gold); animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
 
@@ -82,7 +99,9 @@
   <label>top-k <input type="number" id="top_k" value="40" step="1" min="0"></label>
   <label>max <input type="number" id="max_tokens" value="200" step="10" min="16"></label>
   <label><input type="checkbox" id="thinking"> think</label>
+  <label><input type="checkbox" id="usetools"> tools</label>
   <button id="sysbtn" type="button">System…</button>
+  <button id="toolbtn" type="button">Tools…</button>
   <button id="clear" type="button">Clear</button>
   <button id="regen" type="button">Regenerate</button>
 </header>
@@ -90,6 +109,12 @@
 <div id="sysbox" hidden>
   <label for="system">System prompt — the persona lives here. Edit and send a message to try it.</label>
   <textarea id="system" rows="3"></textarea>
+</div>
+
+<div id="toolbox" hidden>
+  <label for="tools">Tool schemas (OpenAI format). Tick <b>tools</b> above to offer them.
+    A 0.6B model only calls a tool if one plainly fits — try "what's the weather in Vienna?"</label>
+  <textarea id="tools" rows="8"></textarea>
 </div>
 
 <div id="log"><div class="wrap" id="wrap"></div></div>
@@ -118,8 +143,35 @@ function opts() {
     max_tokens: parseInt($("max_tokens").value, 10),
     system: $("system").value,
     thinking: $("thinking").checked,
+    tools: toolSchemas(),
   };
 }
+
+const DEFAULT_TOOLS = [
+  {type:"function",function:{name:"get_weather",description:"Current weather for a location",
+    parameters:{type:"object",properties:{location:{type:"string"},unit:{type:"string",enum:["celsius","fahrenheit"]}},required:["location"]}}},
+  {type:"function",function:{name:"send_message",description:"Send a message to a contact",
+    parameters:{type:"object",properties:{recipient:{type:"string"},body:{type:"string"}},required:["recipient","body"]}}},
+  {type:"function",function:{name:"set_timer",description:"Set a countdown timer",
+    parameters:{type:"object",properties:{seconds:{type:"integer"},label:{type:"string"}},required:["seconds"]}}},
+];
+
+// Returns null when tools are off, so the server simply omits them.
+function toolSchemas() {
+  if (!$("usetools").checked) return null;
+  try {
+    const v = JSON.parse($("tools").value);
+    return Array.isArray(v) && v.length ? v : null;
+  } catch (e) {
+    fail("tool schemas are not valid JSON: " + e.message);
+    return null;
+  }
+}
+
+$("toolbtn").addEventListener("click", () => { $("toolbox").hidden = !$("toolbox").hidden; });
+$("usetools").addEventListener("change", () => {
+  if ($("usetools").checked) $("toolbox").hidden = false;
+});
 
 $("sysbtn").addEventListener("click", () => { $("sysbox").hidden = !$("sysbox").hidden; });
 
@@ -129,18 +181,63 @@ function render() {
     wrap.innerHTML = '<p class="note">Say something. Edit the system prompt above to change the persona — clearing it gives you the base model.</p>';
     return;
   }
-  for (const t of turns) {
+  let lastText = null;
+  turns.forEach((t, idx) => {
     const row = document.createElement("div");
+    const who = t.role === "user" ? "You" : t.role === "tool" ? "Tool" : "Pirate";
     row.className = "msg " + (t.role === "user" ? "user" : "bot");
-    row.innerHTML = `<div class="who">${t.role === "user" ? "You" : "Pirate"}</div>`;
-    const text = document.createElement("div");
-    text.className = "text";
-    text.textContent = t.text;
-    row.appendChild(text);
+    row.innerHTML = `<div class="who">${who}</div>`;
+    const body = document.createElement("div");
+    body.className = "text";
+
+    if (t.thinking) {
+      const th = document.createElement("div");
+      th.className = "think";
+      th.innerHTML = '<div class="think-label">thinking</div>';
+      const tt = document.createElement("span");
+      tt.textContent = t.thinking;
+      th.appendChild(tt);
+      body.appendChild(th);
+    }
+
+    (t.tool_calls || []).forEach((tc) => {
+      const card = document.createElement("div");
+      card.className = "toolcall";
+      const fn = tc.function || {};
+      card.innerHTML = `<span class="fn">→ ${fn.name || "?"}</span>(${fn.arguments || ""})`;
+      body.appendChild(card);
+
+      // Feeding a result back is the only way to see the turn the model would
+      // actually say to a user; without it the loop stops at the JSON.
+      const alreadyAnswered = turns[idx + 1] && turns[idx + 1].role === "tool";
+      if (!alreadyAnswered) {
+        const box = document.createElement("div");
+        box.className = "toolresult";
+        const inp = document.createElement("input");
+        inp.placeholder = '{"result": "..."} — a made-up result is fine';
+        inp.value = '{"ok": true}';
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Send result";
+        btn.onclick = () => {
+          turns.push({ role: "tool", name: fn.name, text: inp.value });
+          render();
+          stream();
+        };
+        box.appendChild(inp); box.appendChild(btn);
+        body.appendChild(box);
+      }
+    });
+
+    const span = document.createElement("span");
+    span.textContent = t.text || "";
+    body.appendChild(span);
+    row.appendChild(body);
     wrap.appendChild(row);
-  }
+    lastText = span;
+  });
   log.scrollTop = log.scrollHeight;
-  return wrap.lastChild.querySelector(".text");
+  return lastText;
 }
 
 function setBusy(on, msg) {
@@ -174,6 +271,7 @@ async function loadModels() {
     return;
   }
   if (typeof d.system === "string" && !$("system").value) $("system").value = d.system;
+  if (!$("tools").value) $("tools").value = JSON.stringify(DEFAULT_TOOLS, null, 2);
   for (const m of d.models) {
     const o = document.createElement("option");
     o.value = m.path;
@@ -233,7 +331,7 @@ $("input").addEventListener("keydown", (e) => {
 async function stream() {
   setBusy(true, "generating…");
   turns.push({ role: "bot", text: "" });
-  const node = render();
+  let node = render();
   node.classList.add("cursor");
 
   let r;
@@ -271,11 +369,32 @@ async function stream() {
       if (ev.error) { node.classList.remove("cursor"); setBusy(false); fail(ev.error); return; }
       if (ev.done) {
         node.classList.remove("cursor");
-        setBusy(false, ev.reason === "limit" ? "hit the token limit" : "");
+        // Re-render so a completed tool call gets its "send result" box.
+        const last = turns[turns.length - 1];
+        if (last.tool_calls && last.tool_calls.length) render();
+        setBusy(false, ev.reason === "length" ? "hit the token limit" : "");
         return;
       }
-      turns[turns.length - 1].text += ev.content;
-      node.textContent = turns[turns.length - 1].text;
+      const cur = turns[turns.length - 1];
+      if (ev.thinking) {
+        cur.thinking = (cur.thinking || "") + ev.thinking;
+        node = render();
+        continue;
+      }
+      if (ev.tool_call) {
+        cur.tool_calls = cur.tool_calls || [];
+        const i = ev.tool_call.index || 0;
+        cur.tool_calls[i] = cur.tool_calls[i] || { type: "function", function: { name: "", arguments: "" } };
+        cur.tool_calls[i].function.name += ev.tool_call.name;
+        cur.tool_calls[i].function.arguments += ev.tool_call.arguments;
+        continue;
+      }
+      cur.text += ev.content || "";
+      // Qwen3 emits its chain of thought inline when the server does not split
+      // it out; hoist it so it renders as a thinking block, not as the answer.
+      const m = cur.text.match(/^\s*<think>([\s\S]*?)<\/think>\s*/);
+      if (m) { cur.thinking = m[1].trim(); cur.text = cur.text.slice(m[0].length); node = render(); }
+      else node.textContent = cur.text;
       log.scrollTop = log.scrollHeight;
     }
   }
