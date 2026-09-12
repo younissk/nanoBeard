@@ -36,6 +36,15 @@
   label { font-size: 12px; color: var(--tan); display: inline-flex; gap: 5px; align-items: center; }
   input[type=number] { width: 68px; }
 
+  #sysbox { padding: 10px 16px; background: #241810; border-bottom: 1px solid var(--rope); }
+  #sysbox label { display: block; margin-bottom: 5px; }
+  #sysbox textarea {
+    width: 100%; font: inherit; font-size: 13px; resize: vertical;
+    background: var(--rope-dark); color: var(--parchment);
+    border: 1px solid var(--rope); border-radius: 5px; padding: 8px;
+  }
+  #sysbox textarea:focus { outline: none; border-color: var(--gold); }
+
   #log { flex: 1; overflow-y: auto; padding: 20px 16px; }
   .wrap { max-width: 760px; margin: 0 auto; }
   .msg { margin-bottom: 16px; display: flex; gap: 10px; }
@@ -72,9 +81,16 @@
   <label>temp <input type="number" id="temperature" value="0.8" step="0.05" min="0" max="2"></label>
   <label>top-k <input type="number" id="top_k" value="40" step="1" min="0"></label>
   <label>max <input type="number" id="max_tokens" value="200" step="10" min="16"></label>
+  <label><input type="checkbox" id="thinking"> think</label>
+  <button id="sysbtn" type="button">System…</button>
   <button id="clear" type="button">Clear</button>
   <button id="regen" type="button">Regenerate</button>
 </header>
+
+<div id="sysbox" hidden>
+  <label for="system">System prompt — the persona lives here. Edit and send a message to try it.</label>
+  <textarea id="system" rows="3"></textarea>
+</div>
 
 <div id="log"><div class="wrap" id="wrap"></div></div>
 
@@ -100,13 +116,17 @@ function opts() {
     temperature: parseFloat($("temperature").value),
     top_k: parseInt($("top_k").value, 10),
     max_tokens: parseInt($("max_tokens").value, 10),
+    system: $("system").value,
+    thinking: $("thinking").checked,
   };
 }
+
+$("sysbtn").addEventListener("click", () => { $("sysbox").hidden = !$("sysbox").hidden; });
 
 function render() {
   wrap.innerHTML = "";
   if (!turns.length) {
-    wrap.innerHTML = '<p class="note">Trained on 512 tokens of context — long chats get trimmed from the oldest turn.</p>';
+    wrap.innerHTML = '<p class="note">Say something. Edit the system prompt above to change the persona — clearing it gives you the base model.</p>';
     return;
   }
   for (const t of turns) {
@@ -153,6 +173,7 @@ async function loadModels() {
     sel.disabled = true;
     return;
   }
+  if (typeof d.system === "string" && !$("system").value) $("system").value = d.system;
   for (const m of d.models) {
     const o = document.createElement("option");
     o.value = m.path;

@@ -18,9 +18,18 @@ Two moving parts:
     llama-server's ``/completion`` with ``stream: true``, forwarding tokens as
     server-sent events so replies appear as they generate.
 
-Prompt format and stop strings are imported from `nanobeard.rejection.generate`
-rather than re-derived: the trailing space in "Pirate: " is load-bearing, and
-two copies of that rule would eventually disagree.
+Two prompt paths, because the repo now has two kinds of model:
+
+  * ``completion`` — the frigate line. Raw ``/completion`` with the SFT
+    transcript from `nanobeard.rejection.generate`; the trailing space in
+    "Pirate: " is load-bearing, which is why it is imported rather than
+    re-derived.
+  * ``chat`` — the Qwen3 line (the pirate LoRA). ``/v1/chat/completions``, so
+    llama-server applies the template baked into the GGUF. That template carries
+    the tool-call and think blocks, so hand-rendering would quietly lose them.
+
+Default is ``chat``: everything trained from here on is Qwen3-shaped. Pass
+``--api completion`` for a frigate GGUF.
 """
 
 from __future__ import annotations
@@ -191,7 +200,7 @@ def trim_turns(turns: list[dict], budget: int, count) -> list[dict]:
 
 
 def build_payload(turns: list[dict], opts: dict) -> dict:
-    """llama-server /completion payload for a chat turn."""
+    """llama-server /completion payload for a chat turn (frigate line)."""
     return {
         "prompt": render_prompt(turns),
         "n_predict": int(opts.get("max_tokens", 200)),
@@ -200,6 +209,30 @@ def build_payload(turns: list[dict], opts: dict) -> dict:
         "top_k": int(opts.get("top_k", 40)),
         "stop": STOPS,
         "cache_prompt": True,
+        "stream": True,
+    }
+
+
+def build_chat_payload(turns: list[dict], opts: dict) -> dict:
+    """/v1/chat/completions payload, so the GGUF's own template is applied."""
+    messages: list[dict] = []
+    system = (opts.get("system") or "").strip()
+    if system:
+        messages.append({"role": "system", "content": system})
+    for t in turns:
+        messages.append({
+            "role": "user" if t["role"] == "user" else "assistant",
+            "content": t["text"],
+        })
+    return {
+        "messages": messages,
+        "max_tokens": int(opts.get("max_tokens", 200)),
+        "temperature": float(opts.get("temperature", 0.8)),
+        "top_p": float(opts.get("top_p", 0.95)),
+        "top_k": int(opts.get("top_k", 40)),
+        # Qwen3 thinks by default; on a 0.6B that is mostly latency the user
+        # never sees, so it is off unless asked for.
+        "chat_template_kwargs": {"enable_thinking": bool(opts.get("thinking"))},
         "stream": True,
     }
 
@@ -213,6 +246,8 @@ class ChatHandler(BaseHTTPRequestHandler):
     llama: LlamaServer | None = None
     attached: str | None = None
     gguf_root: Path = DEFAULT_GGUF_ROOT
+    api: str = "chat"
+    default_system: str = ""
 
     def log_message(self, fmt, *args):  # noqa: A002 - stdlib signature
         pass  # The UI is the log; per-request noise buries the real errors.
@@ -251,6 +286,8 @@ class ChatHandler(BaseHTTPRequestHandler):
                 "models": discover_models(self.gguf_root),
                 "current": None if self.attached else (self.llama.model if self.llama else None),
                 "attached": self.attached,
+                "api": self.api,
+                "system": self.default_system,
             })
         else:
             self._json({"error": "not found"}, 404)
@@ -295,9 +332,14 @@ class ChatHandler(BaseHTTPRequestHandler):
         with contextlib.suppress(urllib.error.URLError, TimeoutError, OSError):
             turns = trim_turns(turns, budget, lambda t: _token_count(backend, t))
 
-        payload = build_payload(turns, req)
+        if self.api == "chat":
+            payload = build_chat_payload(turns, req)
+            endpoint = f"{backend}/v1/chat/completions"
+        else:
+            payload = build_payload(turns, req)
+            endpoint = f"{backend}/completion"
         upstream = urllib.request.Request(
-            f"{backend}/completion", data=json.dumps(payload).encode(),
+            endpoint, data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"},
         )
 
@@ -311,11 +353,23 @@ class ChatHandler(BaseHTTPRequestHandler):
                     line = raw.decode(errors="replace").strip()
                     if not line.startswith("data:"):
                         continue
-                    chunk = json.loads(line[5:])
-                    self._send_event({"content": chunk.get("content", "")})
-                    if chunk.get("stop"):
-                        self._send_event({"done": True, "reason": chunk.get("stop_type")})
+                    body_txt = line[5:].strip()
+                    if body_txt == "[DONE]":
+                        self._send_event({"done": True, "reason": "stop"})
                         return
+                    chunk = json.loads(body_txt)
+                    if self.api == "chat":
+                        choice = (chunk.get("choices") or [{}])[0]
+                        delta = choice.get("delta") or {}
+                        self._send_event({"content": delta.get("content") or ""})
+                        if choice.get("finish_reason"):
+                            self._send_event({"done": True, "reason": choice["finish_reason"]})
+                            return
+                    else:
+                        self._send_event({"content": chunk.get("content", "")})
+                        if chunk.get("stop"):
+                            self._send_event({"done": True, "reason": chunk.get("stop_type")})
+                            return
         except BrokenPipeError:
             return  # Browser navigated away mid-stream; nothing to report to.
         except (urllib.error.URLError, TimeoutError, OSError) as e:
@@ -327,6 +381,12 @@ class ChatHandler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+PIRATE_SYSTEM = (
+    "You are Nano Beard, a warm, salty pirate assistant. Speak in a natural, "
+    "readable pirate voice. Be concise. Never mention being an AI."
+)
+
+
 def serve(
     *,
     ui_port: int = DEFAULT_UI_PORT,
@@ -336,6 +396,8 @@ def serve(
     attach: str | None = None,
     ctx: int = DEFAULT_CTX,
     open_browser: bool = True,
+    api: str = "chat",
+    system: str = PIRATE_SYSTEM,
 ) -> None:
     llama = None if attach else LlamaServer(port=llama_port, ctx=ctx)
 
@@ -358,6 +420,8 @@ def serve(
     ChatHandler.llama = llama
     ChatHandler.attached = attach
     ChatHandler.gguf_root = gguf_root
+    ChatHandler.api = api
+    ChatHandler.default_system = system
 
     httpd = ThreadingHTTPServer(("127.0.0.1", ui_port), ChatHandler)
 
@@ -392,6 +456,11 @@ def main() -> None:
     ap.add_argument("--attach", default=None, help="Use an already-running llama-server URL")
     ap.add_argument("--ctx", type=int, default=DEFAULT_CTX)
     ap.add_argument("--no-open", action="store_true", help="Do not open a browser")
+    ap.add_argument("--api", choices=("chat", "completion"), default="chat",
+                    help="chat = /v1/chat/completions with the GGUF's own template "
+                         "(Qwen3 line); completion = raw SFT transcript (frigate line)")
+    ap.add_argument("--system", default=PIRATE_SYSTEM,
+                    help="Default system prompt, editable in the UI")
     args = ap.parse_args()
     serve(
         ui_port=args.port,
@@ -401,6 +470,8 @@ def main() -> None:
         attach=args.attach,
         ctx=args.ctx,
         open_browser=not args.no_open,
+        api=args.api,
+        system=args.system,
     )
 
 

@@ -75,8 +75,33 @@ def merge(adapter: Path, out: Path, base: str | None = None, dtype: str = "bfloa
     # rendered with, and a mismatch here is the silent-gibberish failure mode.
     src = adapter if (adapter / "tokenizer.json").exists() else Path(base_id)
     AutoTokenizer.from_pretrained(str(src)).save_pretrained(str(out))
+    _inline_chat_template(out)
     print(f"merged -> {out}")
     return out
+
+
+def _inline_chat_template(out: Path) -> None:
+    """Copy chat_template.jinja into tokenizer_config.json.
+
+    transformers>=5 saves the template as a separate .jinja file, but
+    convert_hf_to_gguf.py only reads `chat_template` inside tokenizer_config.json.
+    Without this the GGUF ships with no template at all and llama-server silently
+    falls back to a generic ChatML one — which is close enough to Qwen3 that
+    nothing looks broken, while `<think>` handling and the tool-call template are
+    quietly wrong. Worse on a phone, where there is no server flag to patch it.
+    """
+    import json
+
+    jinja = out / "chat_template.jinja"
+    cfg_path = out / "tokenizer_config.json"
+    if not (jinja.exists() and cfg_path.exists()):
+        return
+    cfg = json.loads(cfg_path.read_text())
+    if cfg.get("chat_template"):
+        return
+    cfg["chat_template"] = jinja.read_text()
+    cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+    print("  inlined chat_template into tokenizer_config.json")
 
 
 def to_gguf(hf_dir: Path, out_gguf: Path, llama_cpp: Path, python: str | None) -> None:

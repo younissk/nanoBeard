@@ -255,10 +255,15 @@ CHAT_PORT ?= 8800
 CHAT_LLAMA_PORT ?= 8901
 CHAT_GGUF_ROOT ?= export/gguf
 
+# API=completion for the frigate line (raw SFT transcript); the default `chat`
+# uses /v1/chat/completions so llama-server applies the GGUF's own template,
+# which is what carries Qwen3's tool-call and think blocks.
+CHAT_API ?= chat
+
 chat:
 	$(UV) run python -m nanobeard.chat.server \
 		--port $(CHAT_PORT) --llama-port $(CHAT_LLAMA_PORT) \
-		--gguf-root $(CHAT_GGUF_ROOT) \
+		--gguf-root $(CHAT_GGUF_ROOT) --api $(CHAT_API) \
 		$(if $(GGUF_MODEL_PICK),--model $(GGUF_MODEL_PICK),) \
 		$(if $(ATTACH),--attach $(ATTACH),)
 
