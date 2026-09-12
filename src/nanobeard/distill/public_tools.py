@@ -98,6 +98,48 @@ def convert_row(row: dict, system: str) -> dict | None:
     }
 
 
+def build_negatives(prose_rows: list[dict], tool_rows: list[dict], n: int,
+                    seed: int = 5, n_tools: int = 3) -> list[dict]:
+    """Turn ordinary prose examples into 'tools offered, none apply' examples.
+
+    LoRA v3 called the right tool 100% of the time and then called one for "I'm
+    feeling a bit down today". Tool examples outnumbered negatives 24:1 and the
+    public sets contain no negatives at all, so the model learned that an
+    available tool is an instruction to use it.
+
+    The cure costs nothing: an existing chat or math example, with a few
+    unrelated tool schemas attached, is already a correct negative — the right
+    answer is still the prose answer. Reusing real replies also means the
+    negatives keep teaching voice and arithmetic rather than only teaching
+    silence.
+    """
+    import random
+
+    rng = random.Random(seed)
+    pool = [t for r in tool_rows for t in (r.get("tools") or [])]
+    if not pool or not prose_rows:
+        return []
+    picks = prose_rows[:]
+    rng.shuffle(picks)
+    out = []
+    for row in picks[:n]:
+        tools = rng.sample(pool, k=min(n_tools, len(pool)))
+        # Distinct names only: a duplicated schema in one list is just noise.
+        seen, uniq = set(), []
+        for t in tools:
+            name = t["function"].get("name")
+            if name not in seen:
+                seen.add(name)
+                uniq.append(t)
+        out.append({
+            "kind": "tool_none",
+            "source": f"negative_from_{row.get('kind', '?')}",
+            "tools": uniq,
+            "messages": row["messages"],
+        })
+    return out
+
+
 def build(system: str, configs=CONFIGS, limit: int | None = None, token: str | None = None):
     """Rows ready to concatenate with the teacher-generated set."""
     from datasets import load_dataset
@@ -133,6 +175,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default="runs/distill/tools_public.jsonl")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--negatives", type=int, default=0,
+                    help="Also emit N 'tools offered, none apply' rows built from --prose")
+    ap.add_argument("--prose", nargs="*", default=["runs/distill/train.jsonl"],
+                    help="Source of chat/math rows to turn into negatives")
+    ap.add_argument("--negatives-out", default="runs/distill/tools_negatives.jsonl")
     args = ap.parse_args()
 
     load_env()
@@ -148,6 +195,18 @@ def main() -> None:
     print(f"wrote {len(rows)} rows to {p}")
     print(f"  distinct tools:   {len(names)}")
     print(f"  distinct queries: {len(queries)}")
+
+    if args.negatives:
+        from nanobeard.finetune.data import load_rows
+
+        prose = [r for f in args.prose for r in load_rows(f)
+                 if r.get("kind") in ("chat", "math")]
+        negs = build_negatives(prose, rows, args.negatives)
+        q = Path(args.negatives_out)
+        with q.open("w") as f:
+            for r in negs:
+                f.write(json.dumps(r) + "\n")
+        print(f"wrote {len(negs)} negatives to {q}")
 
 
 if __name__ == "__main__":
