@@ -255,6 +255,7 @@ class GPT(nn.Module):
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 targets.view(-1),
+                ignore_index=-100,  # SFT masks non-assistant tokens with IGNORE_INDEX (-100)
             )
 
         return logits, loss

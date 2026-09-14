@@ -46,3 +46,11 @@ def test_arch_fields_present_on_config():
             assert hasattr(cfg, field), (
                 f"{spec.codename} declares arch_field {field!r} not on Config"
             )
+
+
+def test_unknown_model_raises_key_error():
+    import pytest
+
+    cfg = Config(model_name="nonexistent_v99")
+    with pytest.raises(KeyError, match="Unknown model_name 'nonexistent_v99'"):
+        spec_for(cfg)

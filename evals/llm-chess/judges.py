@@ -15,7 +15,6 @@ import random
 from dataclasses import dataclass, field
 from typing import Protocol
 
-
 JUDGE_RUBRIC = """You are judging two LLM responses (A and B) to the same prompt.
 
 Ignore length. Ignore formatting. Judge correctness and helpfulness only.

@@ -25,6 +25,10 @@ import argparse
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 CARD_TEMPLATE = """---
 license: mit
 language:
@@ -137,9 +141,14 @@ def main() -> None:
         print("\n[dry-run] nothing uploaded. Re-run with --push to publish.")
         return
 
-    from huggingface_hub import HfApi
+    from huggingface_hub import HfApi, get_token
 
-    token = os.environ["HF_TOKEN"]
+    token = os.environ.get("HF_TOKEN") or get_token()
+    if not token:
+        raise SystemExit(
+            "HF_TOKEN environment variable not set and no cached token found. "
+            "Set HF_TOKEN in your environment or .env, or run `huggingface-cli login`."
+        )
     api = HfApi(token=token)
     api.create_repo(repo_id=args.repo, repo_type="model", exist_ok=True, private=args.private)
     api.upload_file(

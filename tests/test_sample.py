@@ -52,3 +52,11 @@ def test_generate_with_top_k_only_uses_top_tokens(tiny_cfg: Config):
         logits, _ = model(idx)
     expected = logits[0, -1].argmax().item()
     assert out[0, -1].item() == expected
+
+
+def test_generate_with_top_k_zero_disables_filtering(tiny_cfg: Config):
+    """top_k=0 should disable filtering without throwing RuntimeError."""
+    model = build_model(tiny_cfg).eval()
+    idx = torch.tensor([[1, 2, 3]], dtype=torch.long)
+    out = generate(model, idx, max_new_tokens=4, temperature=1.0, top_k=0)
+    assert out.shape[1] == 3 + 4

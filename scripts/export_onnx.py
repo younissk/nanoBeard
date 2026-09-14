@@ -35,7 +35,6 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from safetensors.torch import load_file
 
 
 # --------------------------------------------------------------------------
@@ -158,7 +157,7 @@ def _bytes_to_unicode() -> dict[str, int]:
             bs.append(b)
             cs.append(256 + n)
             n += 1
-    return {chr(c): b for b, c in zip(bs, cs)}
+    return {chr(c): b for b, c in zip(bs, cs, strict=True)}
 
 
 def convert_tokenizer(hf_path: Path) -> tuple[dict, int]:
@@ -166,7 +165,7 @@ def convert_tokenizer(hf_path: Path) -> tuple[dict, int]:
     import base64
 
     u2b = _bytes_to_unicode()
-    hf = json.loads(hf_path.read_text())
+    hf = json.loads(hf_path.read_text(encoding="utf-8"))
     vocab = hf["model"]["vocab"]
     specials = {t["content"]: t["id"] for t in hf.get("added_tokens", []) if t.get("special")}
 
@@ -281,9 +280,6 @@ def main():
     size_mb = onnx_path.stat().st_size / (1024 * 1024)
     print(f"done: {onnx_path} ({size_mb:.1f} MB)")
 
-
-# Keep load_file importable for callers that export from safetensors instead.
-_ = load_file
 
 if __name__ == "__main__":
     main()

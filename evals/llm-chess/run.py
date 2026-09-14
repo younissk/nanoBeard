@@ -111,7 +111,7 @@ def main() -> None:
     cache_path = None if args.no_cache else args.cache
     rcache_path = None if args.no_response_cache else args.response_cache
 
-    matches = run_swiss(
+    _matches = run_swiss(
         models=models,
         judges=judges,
         prompts=prompts,

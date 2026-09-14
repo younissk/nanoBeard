@@ -18,6 +18,7 @@ higher peak LR than AdamW, so its group keeps muon_lr/learning_rate as ratio).
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -76,7 +77,7 @@ class Muon(torch.optim.Optimizer):
         super().__init__(param_groups, {})
 
     @torch.no_grad()
-    def step(self, closure=None):  # type: ignore[override]
+    def step(self, closure=None):
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -138,7 +139,9 @@ def _classify_params(
 
     Tied weights (wte == lm_head) are de-duplicated by tensor id.
     """
-    muon, adam_decay, adam_no_decay = [], [], []
+    muon: list[Tensor] = []
+    adam_decay: list[Tensor] = []
+    adam_no_decay: list[Tensor] = []
     seen: set[int] = set()
     for name, p in model.named_parameters():
         if not p.requires_grad or id(p) in seen:
@@ -154,7 +157,7 @@ def _classify_params(
     return muon, adam_decay, adam_no_decay
 
 
-def _adamw_groups(model: nn.Module, config: Config) -> list[dict]:
+def _adamw_groups(model: nn.Module, config: Config) -> list[dict[str, Any]]:
     decay = [p for p in model.parameters() if p.requires_grad and p.dim() >= 2]
     no_decay = [p for p in model.parameters() if p.requires_grad and p.dim() < 2]
     return [
@@ -164,23 +167,18 @@ def _adamw_groups(model: nn.Module, config: Config) -> list[dict]:
 
 
 def build_optimizer(model: nn.Module, config: Config) -> torch.optim.Optimizer:
-    """Build the optimizer selected by config.optimizer.
-
-    Every param group is tagged with `lr_ratio` (group peak LR / config peak LR)
-    so the caller scales all groups from one scheduled scalar:
-        pg["lr"] = scheduled_lr * pg["lr_ratio"]
-    """
+    """Build optimizer for model according to config.optimizer ('adamw' | 'muon')."""
     if config.optimizer == "muon":
         muon, adam_decay, adam_no_decay = _classify_params(model)
         ratio = config.muon_lr / config.learning_rate
-        groups = [
+        groups: list[dict[str, Any]] = [
             {
                 "params": muon,
                 "use_muon": True,
                 "lr": config.muon_lr,
                 "momentum": config.muon_momentum,
                 "ns_steps": config.muon_ns_steps,
-                "weight_decay": config.weight_decay,
+                "weight_decay": 0.0,
                 "lr_ratio": ratio,
             },
             {
@@ -201,7 +199,7 @@ def build_optimizer(model: nn.Module, config: Config) -> torch.optim.Optimizer:
             },
         ]
         groups = [g for g in groups if g["params"]]  # drop empties
-        optimizer = Muon(groups)
+        optimizer: torch.optim.Optimizer = Muon(groups)
         n_muon = sum(p.numel() for p in muon)
         n_adam = sum(p.numel() for p in adam_decay + adam_no_decay)
         print(
