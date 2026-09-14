@@ -41,8 +41,13 @@ MODEL_REGISTRY: dict[str, ModelSpec] = {
 
 
 def build_model(cfg: Config) -> nn.Module:
-    return MODEL_REGISTRY[cfg.model_name].cls(cfg)
+    spec = spec_for(cfg)
+    return spec.cls(cfg)
 
 
 def spec_for(cfg: Config) -> ModelSpec:
+    if cfg.model_name not in MODEL_REGISTRY:
+        raise KeyError(
+            f"Unknown model_name {cfg.model_name!r}. Available models: {list(MODEL_REGISTRY.keys())}"
+        )
     return MODEL_REGISTRY[cfg.model_name]

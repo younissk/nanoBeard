@@ -24,11 +24,14 @@ import random
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Sequence
 
+from elo import DEFAULT_K, DEFAULT_RATING, update
+from judges import Judge, Verdict
+from models import Model
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -37,10 +40,6 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
-
-from elo import DEFAULT_K, DEFAULT_RATING, update
-from judges import Judge, Verdict
-from models import Model
 
 _console = Console(stderr=True)
 
@@ -415,7 +414,7 @@ def run_swiss(
                             for a, b, j in judge_tasks
                         ]
 
-                        for (a, b, j), fut in zip(judge_tasks, judge_futures):
+                        for (a, b, j), fut in zip(judge_tasks, judge_futures, strict=True):
                             ra, rb = responses[a.name], responses[b.name]
                             fwd, rev = fut.result()
                             winner_slot, reason = consolidate_swap(fwd, rev)

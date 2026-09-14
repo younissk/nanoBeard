@@ -57,9 +57,8 @@ def resolve_max_iters(config: Config) -> Config:
         return config
 
     train_tokens = os.path.getsize(config.train_bin) // 2  # uint16 = 2 bytes/token
-    tokens_per_iter = (
-        config.batch_size * config.block_size * config.gradient_accumulation_steps
-    )
+    accum = max(1, config.gradient_accumulation_steps)
+    tokens_per_iter = max(1, config.batch_size * config.block_size * accum)
     epoch_iters = max(1, round(config.epochs * train_tokens / tokens_per_iter))
     horizon = min(epoch_iters, config.max_iters)
 
@@ -200,7 +199,7 @@ def save_checkpoint(
     }
     path = config.ckpt_path
     torch.save(checkpoint, path)
-    print(f"  → saved checkpoint to {path} ({tag}, val {val_loss:.4f})")
+    print(f"  -> saved checkpoint to {path} ({tag}, val {val_loss:.4f})")
 
     if config.hf_ckpt_repo:
         try:
@@ -213,7 +212,7 @@ def save_checkpoint(
                 token=os.environ.get("HF_TOKEN"),
                 commit_message=f"iter {iter_num} | val {val_loss:.4f} ({tag})",
             )
-            print(f"  → pushed to {config.hf_ckpt_repo}")
+            print(f"  -> pushed to {config.hf_ckpt_repo}")
         except Exception as e:
             print(f"  ! Hub upload failed ({type(e).__name__}: {e}) — continuing")
 
@@ -292,12 +291,16 @@ def train(config: Config):
                 tag="best" if is_best else "latest",
             )
 
-        x, y = get_batch("train", config)
-        with ctx:
-            _, loss = model(x, y)
-
         optimizer.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        micro_steps = max(1, config.gradient_accumulation_steps)
+        loss_sum = 0.0
+        for _ in range(micro_steps):
+            x, y = get_batch("train", config)
+            with ctx:
+                _, loss = model(x, y)
+                loss = loss / micro_steps
+            scaler.scale(loss).backward()
+            loss_sum += loss.item()
 
         if config.grad_clip > 0:
             scaler.unscale_(optimizer)
@@ -307,10 +310,10 @@ def train(config: Config):
         scaler.update()
 
         if iter_num % config.log_interval == 0 and iter_num > 0:
-            print(f"  iter {iter_num} | minibatch loss {loss.item():.4f} | lr {lr:.2e}")
+            print(f"  iter {iter_num} | minibatch loss {loss_sum:.4f} | lr {lr:.2e}")
             if wandb_run is not None:
                 wandb_run.log(
-                    {"train/minibatch_loss": loss.item(), "lr": lr},
+                    {"train/minibatch_loss": loss_sum, "lr": lr},
                     step=iter_num,
                 )
 

@@ -13,12 +13,15 @@ from dataclasses import asdict
 from pathlib import Path
 
 import torch
-from huggingface_hub import HfApi
+from dotenv import load_dotenv
+from huggingface_hub import HfApi, get_token
 from safetensors.torch import save_model
 
 from nanobeard.config import Config, load_config
 from nanobeard.models import build_model, spec_for
 from nanobeard.models.naming import display_name
+
+load_dotenv()
 
 DEFAULT_README = Path("README.md")
 DEFAULT_BANNER = Path("banner.png")
@@ -86,7 +89,12 @@ def main():
         json.dumps(training_meta, indent=2, default=str) + "\n"
     )
 
-    token = os.environ["HF_TOKEN"]
+    token = os.environ.get("HF_TOKEN") or get_token()
+    if not token:
+        raise ValueError(
+            "HF_TOKEN environment variable not set and no cached token found. "
+            "Set HF_TOKEN in your environment or .env, or run `huggingface-cli login`."
+        )
     api = HfApi(token=token)
     api.create_repo(repo_id=spec.hf_repo, repo_type="model", exist_ok=True, token=token)
     commit_message = args.commit_message or f"Publish {display_name(ckpt_cfg, model)}"

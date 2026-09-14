@@ -20,7 +20,7 @@ import shutil
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from datasets import Dataset, DatasetDict, load_dataset, load_from_disk
 
@@ -50,7 +50,7 @@ def build_tiny_stories_pirate() -> DatasetDict:
     from nanobeard.dataset_pipeline.piratize import piratize
 
     raw = load_dataset("roneneldan/TinyStories")
-    return DatasetDict({split: piratize(ds, split) for split, ds in raw.items()})
+    return DatasetDict({split: piratize(ds, str(split)) for split, ds in raw.items()})
 
 
 def build_cosmopedia_wikihow(val_rows: int = 5000) -> DatasetDict:
@@ -165,8 +165,8 @@ def build_wikipedia_pirate(val_rows: int = 500, seed: int = 1337) -> DatasetDict
     matches_path = scan_dir / "matches.jsonl"
     done_path = scan_dir / "done_shards.json"
 
-    done = set(json.loads(done_path.read_text())) if done_path.exists() else set()
-    kept_total = sum(1 for _ in matches_path.open()) if matches_path.exists() else 0
+    done = set(json.loads(done_path.read_text(encoding="utf-8"))) if done_path.exists() else set()
+    kept_total = sum(1 for _ in matches_path.open(encoding="utf-8")) if matches_path.exists() else 0
     if done:
         info(f"wikipedia resume: {len(done)}/{_WIKI_SHARDS} shards already scanned, {kept_total:,} kept so far")
 
@@ -184,7 +184,7 @@ def build_wikipedia_pirate(val_rows: int = 500, seed: int = 1337) -> DatasetDict
             for text in buf:
                 out.write(json.dumps({"text": text}) + "\n")
         done.add(i)
-        done_path.write_text(json.dumps(sorted(done)))
+        done_path.write_text(json.dumps(sorted(done)), encoding="utf-8")
         kept_total += len(buf)
         info(f"wikipedia shard {i + 1}/{_WIKI_SHARDS} done: +{len(buf):,} matches ({kept_total:,} total)")
 
@@ -287,7 +287,7 @@ def materialize(name: str, force: bool = False) -> DatasetDict:
 
     out = source_dir(name)
     if is_cached(name) and not force:
-        ds = load_from_disk(str(out))
+        ds = cast(DatasetDict, load_from_disk(str(out)))
         info(f"source [bold]{name}[/]: cache hit — { {k: len(v) for k, v in ds.items()} }")
         return ds
 
@@ -295,7 +295,7 @@ def materialize(name: str, force: bool = False) -> DatasetDict:
     step(f"Materialize source '{name}'{' (forced rebuild)' if force else ''}")
     info(f"origin: {spec['origin']}")
     ds = spec["builder"]()
-    info(f"source [bold]{name}[/]: built — { {k: len(v) for k, v in ds.items()} }; caching → {out}")
+    info(f"source [bold]{name}[/]: built — { {k: len(v) for k, v in ds.items()} }; caching -> {out}")
     if out.exists():  # clear a stale cache so old shards can't linger
         shutil.rmtree(out)
     out.parent.mkdir(parents=True, exist_ok=True)

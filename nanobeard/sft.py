@@ -44,13 +44,15 @@ def setup_training(config: Config):
 
 
 def load_pretrained(config: Config, pretrained_repo: str) -> nn.Module:
-    """Pull pretraining ckpt from HF, build correct model from ckpt config, load weights."""
-    path = hf_hub_download(
-        repo_id=pretrained_repo,
-        filename="ckpt.pt",
-        token=os.environ.get("HF_TOKEN"),
-        local_dir=config.run_dir,
-    )
+    if os.path.exists(pretrained_repo):
+        path = pretrained_repo
+    else:
+        path = hf_hub_download(
+            repo_id=pretrained_repo,
+            filename="ckpt.pt",
+            token=os.environ.get("HF_TOKEN"),
+            local_dir=config.run_dir,
+        )
     ckpt = torch.load(path, map_location=config.device, weights_only=False)
     arch_cfg: Config = ckpt["config"]
 
@@ -133,7 +135,7 @@ def save_sft_checkpoint(
     }
     path = config.sft_ckpt_path
     torch.save(ckpt, path)
-    print(f"  → saved SFT ckpt to {path} ({tag}, val {val_loss:.4f})")
+    print(f"  -> saved SFT ckpt to {path} ({tag}, val {val_loss:.4f})")
 
     # Only push improvements to the Hub — uploading every eval churns ~165MB
     # (model+optimizer) onto the same filename for no gain.
@@ -152,7 +154,7 @@ def save_sft_checkpoint(
                 token=os.environ.get("HF_TOKEN"),
                 commit_message=f"sft iter {iter_num} | val {val_loss:.4f} ({tag})",
             )
-            print(f"  → pushed to {config.hf_ckpt_repo}")
+            print(f"  -> pushed to {config.hf_ckpt_repo}")
         except Exception as e:
             print(f"  ! Hub upload failed ({type(e).__name__}: {e}) — continuing")
 
@@ -198,12 +200,17 @@ def sft_train(config: Config, pretrained_repo: str):
                 push=is_best,
             )
 
-        x, y = get_sft_batch(train_examples, config)
-        with ctx:
-            _, loss = model(x, y)
-
         optimizer.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
+        micro_steps = max(1, config.gradient_accumulation_steps)
+        loss_sum = 0.0
+        for _ in range(micro_steps):
+            x, y = get_sft_batch(train_examples, config)
+            with ctx:
+                _, loss = model(x, y)
+                loss = loss / micro_steps
+            scaler.scale(loss).backward()
+            loss_sum += loss.item()
+
         if config.grad_clip > 0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
@@ -211,7 +218,7 @@ def sft_train(config: Config, pretrained_repo: str):
         scaler.update()
 
         if iter_num % config.log_interval == 0 and iter_num > 0:
-            print(f"  iter {iter_num} | loss {loss.item():.4f} | lr {lr:.2e}")
+            print(f"  iter {iter_num} | loss {loss_sum:.4f} | lr {lr:.2e}")
 
         iter_num += 1
 

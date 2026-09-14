@@ -10,7 +10,10 @@ import os
 import shutil
 from pathlib import Path
 
-from huggingface_hub import HfApi
+from dotenv import load_dotenv
+from huggingface_hub import HfApi, get_token
+
+load_dotenv()
 
 SPACE_ID = "younissk/nanoBeard-playground"
 SPACE_DIR = Path("space")
@@ -24,7 +27,7 @@ ASSET_COPIES = [
 
 
 def main() -> None:
-    ASSETS_DIR.mkdir(exist_ok=True)
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Refresh bundled package.
     if PACKAGE_DST.exists():
@@ -41,7 +44,12 @@ def main() -> None:
             shutil.copy(src, dst)
             print(f"copied {src} -> {dst}")
 
-    token = os.environ["HF_TOKEN"]
+    token = os.environ.get("HF_TOKEN") or get_token()
+    if not token:
+        raise SystemExit(
+            "HF_TOKEN environment variable not set and no cached token found. "
+            "Set HF_TOKEN in your environment or .env, or run `huggingface-cli login`."
+        )
     api = HfApi(token=token)
     api.upload_folder(
         folder_path=str(SPACE_DIR),

@@ -33,7 +33,7 @@ def generate(
         logits, _ = model(idx_cond)
         logits = logits[:, -1, :] / temperature
 
-        if top_k is not None:
+        if top_k is not None and top_k > 0:
             v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
             logits[logits < v[:, [-1]]] = -float("inf")
 
@@ -56,7 +56,7 @@ def chat_repl(model, tokenizer, args) -> None:
     """
     from nanobeard.sft_data import Turn, build_chat_prompt_ids
 
-    block_size: int = model.config.block_size  # type: ignore[union-attr,assignment]
+    block_size: int = model.config.block_size
     eos_id = tokenizer.token_to_id("<|endoftext|>")
 
     print("\n⚓ Pirate chat — type your message, Ctrl-C or 'quit' to leave.\n")
@@ -146,6 +146,8 @@ def main():
         cfg = load_config(args.config)
         ckpt_path = args.ckpt or cfg.ckpt_path
         tokenizer_path = args.tokenizer or cfg.tokenizer_path
+        if args.device is None:
+            args.device = cfg.device
     else:
         if not (args.ckpt and args.tokenizer):
             parser.error("Provide --config OR both --ckpt and --tokenizer")

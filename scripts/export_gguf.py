@@ -106,13 +106,13 @@ def build_hf_dir(ckpt_path: Path, tokenizer_path: Path, hf_dir: Path) -> dict:
     n_embd = cfg.n_embd
     n_head = cfg.n_head
     head_dim = n_embd // n_head
-    intermediate = state[f"blocks.0.mlp.w_gate.weight"].shape[0]  # SwiGLU hidden
+    intermediate = state["blocks.0.mlp.w_gate.weight"].shape[0]  # SwiGLU hidden
 
     new_state = remap_to_qwen3(state, cfg.n_layer, n_embd)
     save_file(new_state, str(hf_dir / "model.safetensors"))
 
     # eos/bos = the tokenizer's <|endoftext|> id (read from the HF tokenizer.json).
-    tok = json.loads(tokenizer_path.read_text())
+    tok = json.loads(tokenizer_path.read_text(encoding="utf-8"))
     specials = {t["content"]: t["id"] for t in tok.get("added_tokens", []) if t.get("special")}
     eot_id = specials.get("<|endoftext|>", 0)
 
@@ -178,13 +178,13 @@ def _patch_pretokenizer_hash(convert_py: Path, chkhsh: str) -> None:
     # get_vocab_base_pre lives in conversion/base.py in recent llama.cpp.
     base_py = convert_py.parent / "conversion" / "base.py"
     target = base_py if base_py.exists() else convert_py
-    src = target.read_text()
+    src = target.read_text(encoding="utf-8")
     branch = f'        if chkhsh == "{chkhsh}":\n            res = "gpt-2"\n'
     anchor = "        res = None\n"  # init line at the top of get_vocab_base_pre
     if branch.strip() in src:
         return
     idx = src.index(anchor) + len(anchor)
-    target.write_text(src[:idx] + branch + src[idx:])
+    target.write_text(src[:idx] + branch + src[idx:], encoding="utf-8")
     print(f"  patched {target.name}: hash {chkhsh[:16]}… -> gpt-2")
 
 
@@ -250,7 +250,7 @@ def main() -> None:
           f"eot{meta['eot_id']} | val_loss={meta['val_loss']} stage={meta['stage']}")
 
     f16 = out / f"{args.name}-f16.gguf"
-    print(f"[2/4] convert -> f16 GGUF")
+    print("[2/4] convert -> f16 GGUF")
     convert_to_f16(hf_dir, f16, Path(args.llama_cpp))
     print(f"      f16: {_mb(f16):.1f} MB")
 

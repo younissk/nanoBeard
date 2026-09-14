@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import random
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +20,6 @@ sys.path.insert(0, str(LLM_CHESS))
 
 from arena import (  # noqa: E402
     JudgeCache,
-    Match,
     ResponseCache,
     _cache_key,
     _generate_with_cache,
@@ -31,11 +29,10 @@ from arena import (  # noqa: E402
     consolidate_swap,
     run_swiss,
 )
-from elo import DEFAULT_K, DEFAULT_RATING, expected, update  # noqa: E402
+from elo import DEFAULT_K, expected, update  # noqa: E402
 from judges import RandomJudge, Verdict  # noqa: E402
 from leaderboard import _percentile, compute_ratings  # noqa: E402
-from models import EchoModel, register, REGISTRY as MODELS  # noqa: E402
-
+from models import EchoModel, register  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # elo

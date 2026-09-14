@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import os
 import random
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 import torch
 from arrr import translate
@@ -62,6 +64,10 @@ class SFTExample:
     truncated: bool = False
 
 
+def _rows(raw: Any) -> Iterable[dict[str, Any]]:
+    return raw
+
+
 # --------------------------------------------------------------------------
 # Source loaders -> Conversations (bot text still plain English here;
 # piratization happens once, in batch, afterwards).
@@ -69,7 +75,7 @@ class SFTExample:
 def _dolly_conversations(limit: int | None) -> list[Conversation]:
     raw = load_dataset("TeeZee/dolly-15k-pirate-speech", split="train")
     convs: list[Conversation] = []
-    for row in raw:
+    for row in _rows(raw):
         instr = (row["instruction"] or "").strip()
         ctx = (row.get("context") or "").strip()
         resp = (row["response"] or "").strip()
@@ -85,7 +91,7 @@ def _dolly_conversations(limit: int | None) -> list[Conversation]:
 def _empathetic_conversations(limit: int | None) -> list[Conversation]:
     raw = load_dataset("Estwld/empathetic_dialogues_llm", split="train")
     convs: list[Conversation] = []
-    for row in raw:
+    for row in _rows(raw):
         turns: Conversation = []
         for msg in row["conversations"]:
             content = (msg.get("content") or "").strip()

@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import cast
 
 from datasets import Dataset, DatasetDict, concatenate_datasets, interleave_datasets
 
@@ -88,7 +89,7 @@ def build(dataset: str) -> dict:
         if present:
             combined[split] = combine([p for p, _ in present], [w for _, w in present])
             info(f"{split}: {len(combined[split]):,} rows from {len(present)} source(s)")
-    ds = DatasetDict(combined)
+    ds = DatasetDict(cast(dict, combined))
     if "train" not in ds:
         raise ValueError("No source provided a 'train' split")
 
@@ -100,7 +101,7 @@ def build(dataset: str) -> dict:
     eot_id = tokenizer.token_to_id("<|endoftext|>")
     assert eot_id is not None, "Tokenizer must define <|endoftext|>"
     assert tokenizer.get_vocab_size() < 2**16, "vocab too large for uint16"
-    info(f"tokenizer trained — {tokenizer.get_vocab_size():,} tokens → {ds_dir / 'pirate_bpe.json'}")
+    info(f"tokenizer trained — {tokenizer.get_vocab_size():,} tokens -> {ds_dir / 'pirate_bpe.json'}")
 
     step("Encode splits → uint16 .bin")
     train_tokens = encode_split(ds["train"], tokenizer, eot_id, ds_dir / "train.bin")
