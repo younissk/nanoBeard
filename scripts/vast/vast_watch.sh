@@ -26,6 +26,10 @@ POLL_SEC=20
 FETCH_REMOTE=""
 FETCH_LOCAL=""
 DONE_MARKER="${DONE_MARKER:-/root/pirate_llm/.vast_done}"
+# Consecutive failed state lookups before giving up on the instance. One is
+# routine API flakiness; a run of them means it really is gone.
+MAX_UNKNOWN="${MAX_UNKNOWN:-10}"
+UNKNOWN=0
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/pirate_llm_gpu}"
 
 while [ $# -gt 0 ]; do
@@ -78,6 +82,12 @@ resolve_ssh() {
 }
 
 DEADLINE=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
+if pgrep -f "vast_watch.sh $INSTANCE" | grep -qv "^$$\$"; then
+    others=$(pgrep -f "vast_watch.sh $INSTANCE" | grep -v "^$$\$" | tr '\n' ' ')
+    log "another watchdog is already on $INSTANCE (pid $others) — refusing to double up"
+    trap - EXIT INT TERM
+    exit 1
+fi
 log "watching $INSTANCE (timeout ${TIMEOUT_MIN}m, marker $DONE_MARKER)"
 
 STATUS="timeout"
@@ -85,10 +95,27 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
     STATE=$(vastai show instance "$INSTANCE" --raw 2>/dev/null \
         | python3 -c "import json,sys; print(json.load(sys.stdin).get('actual_status','?'))" 2>/dev/null || echo "?")
 
-    if [ "$STATE" = "exited" ] || [ "$STATE" = "?" ]; then
-        log "instance state '$STATE' — nothing left to wait for"
-        STATUS="gone"; break
+    # "?" means the API call failed or returned something unparseable — NOT that
+    # the instance is gone. Treating the two alike destroyed a healthy run 55
+    # minutes in, on a single transient lookup, minutes before it would have
+    # pushed its results. Only a repeated unknown counts.
+    if [ "$STATE" = "exited" ]; then
+        log "instance exited"
+        STATUS="gone"
+        break
     fi
+    if [ "$STATE" = "?" ]; then
+        UNKNOWN=$(( ${UNKNOWN:-0} + 1 ))
+        log "state lookup failed (${UNKNOWN}/${MAX_UNKNOWN})"
+        if [ "$UNKNOWN" -ge "$MAX_UNKNOWN" ]; then
+            log "state unknown ${MAX_UNKNOWN} times running — treating as gone"
+            STATUS="gone"
+            break
+        fi
+        sleep "$POLL_SEC"
+        continue
+    fi
+    UNKNOWN=0
 
     if [ "$STATE" = "running" ] && resolve_ssh; then
         # shellcheck disable=SC2029  # $DONE_MARKER is ours and expands locally on purpose
