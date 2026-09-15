@@ -127,6 +127,9 @@ def main() -> None:
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--device", default=None)
     ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--push-to-hub", default=None, metavar="REPO",
+                    help="Upload the adapter and metrics when done. On a rented box "
+                         "this is the only dependable way to get them back.")
     args = ap.parse_args()
 
     import torch
@@ -135,7 +138,7 @@ def main() -> None:
 
     from nanobeard.rl import rewards as R
     from nanobeard.rl.corpus import load as load_corpus
-    from nanobeard.rl.env import SYSTEM, run_episode
+    from nanobeard.rl.env import SYSTEM, run_episodes
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.seed)
@@ -146,6 +149,11 @@ def main() -> None:
     print(f"corpus {len(index):,} paragraphs | {len(questions):,} questions | device={device}")
 
     tok = AutoTokenizer.from_pretrained(args.base)
+    # Decoder-only generation must pad on the left, or the shorter prompts in a
+    # batch continue from padding instead of from their own last token.
+    tok.padding_side = "left"
+    if tok.pad_token_id is None:
+        tok.pad_token = tok.eos_token
     dtype = torch.float32 if device == "cpu" else torch.bfloat16
     # cast to Any: from_pretrained is typed as a union, and peft wraps rather
     # than subclasses, so the checker cannot follow either handoff.
@@ -167,32 +175,44 @@ def main() -> None:
 
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=args.lr)
 
-    def generate(body: str) -> str:
-        """One model turn. Stops at a closing tag so the model never writes the
-        environment's half of the transcript itself."""
+    def render(body: str) -> str:
+        """Prompt for one model turn.
+
+        enable_thinking=False is not optional. Qwen3's template defaults it on,
+        and the model then spends the entire token budget inside <think> — every
+        rollout parses as invalid, every reward is 0.0, every advantage is 0.0,
+        and the run reads as "the task is too hard" rather than "the prompt was
+        wrong"."""
         msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": body}]
-        # enable_thinking=False is not optional. Qwen3's template defaults it on,
-        # and the model then spends the entire token budget inside <think> —
-        # every rollout parses as invalid, every reward is 0.0, and every
-        # advantage is 0.0, so the run looks like "the task is too hard" rather
-        # than "the prompt was wrong".
-        text = tok.apply_chat_template(
+        # apply_chat_template's return type is a union; tokenize=False is always str.
+        return str(tok.apply_chat_template(
             msgs, tokenize=False, add_generation_prompt=True, enable_thinking=False
-        )
-        enc = tok(text, return_tensors="pt", add_special_tokens=False).to(device)
+        ))
+
+    def batch_generate(bodies: list[str]) -> list[str]:
+        """One generation call for every episode still running."""
+        texts = [render(b) for b in bodies]
+        enc = tok(texts, return_tensors="pt", add_special_tokens=False,
+                  padding=True).to(device)
         with torch.no_grad():
             gen = model.generate(
                 **enc, max_new_tokens=args.max_new_tokens, do_sample=True,
                 temperature=args.temperature, top_p=0.95,
-                pad_token_id=tok.pad_token_id or tok.eos_token_id,
+                pad_token_id=tok.pad_token_id,
             )
-        decoded = tok.decode(gen[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
-        chunk = decoded if isinstance(decoded, str) else str(decoded)
-        for tag in ("</search>", "</answer>"):
-            i = chunk.find(tag)
-            if i != -1:
-                return chunk[: i + len(tag)]
-        return chunk
+        width = enc["input_ids"].shape[1]
+        out: list[str] = []
+        for row in gen:
+            chunk = str(tok.decode(row[width:], skip_special_tokens=True))
+            # Cut at the first closing tag so the model never writes the
+            # environment's half of the transcript for itself.
+            for tag in ("</search>", "</answer>"):
+                i = chunk.find(tag)
+                if i != -1:
+                    chunk = chunk[: i + len(tag)]
+                    break
+            out.append(chunk)
+        return out
 
     rng = torch.Generator().manual_seed(args.seed)
     history = []
@@ -203,11 +223,19 @@ def main() -> None:
         degenerate = 0
 
         model.eval()
-        for qi in idx.tolist():
-            q = questions[qi]
+        # Every rollout of every question in the step goes out in one batch: the
+        # group members share a prompt, so there is nothing to gain by splitting
+        # them, and the GPU is the whole cost here.
+        picked = [questions[i] for i in idx.tolist()]
+        fanned = [q for q in picked for _ in range(args.group_size)]
+        episodes = run_episodes(fanned, index, batch_generate,
+                                max_searches=args.max_searches)
+
+        for gi in range(len(picked)):
+            q = picked[gi]
+            chunk = episodes[gi * args.group_size:(gi + 1) * args.group_size]
             group = []
-            for _ in range(args.group_size):
-                ep = run_episode(q, index, generate, max_searches=args.max_searches)
+            for ep in chunk:
                 rw = R.compute(ep.answer, q.answer, did_search=ep.did_search,
                                retrieved_titles=ep.retrieved_titles, gold_titles=q.gold_titles)
                 r = build_rollout(tok, ep, rw, SYSTEM)
@@ -284,6 +312,28 @@ def main() -> None:
     model.save_pretrained(str(out))
     tok.save_pretrained(str(out))
     (out / "args.json").write_text(json.dumps(vars(args), indent=2))
+
+    if args.push_to_hub:
+        import os
+
+        from huggingface_hub import HfApi
+
+        from nanobeard.env import load_env
+
+        load_env()
+        token = os.getenv("HF_TOKEN")
+        if not token or token == "none":
+            print("  ! --push-to-hub given but HF_TOKEN is unset — results stay local")
+        else:
+            try:
+                api = HfApi()
+                api.create_repo(args.push_to_hub, token=token, exist_ok=True, private=True)
+                api.upload_folder(folder_path=str(out), repo_id=args.push_to_hub,
+                                  token=token,
+                                  commit_message=f"GRPO search, {len(history)} steps")
+                print(f"  -> pushed to https://huggingface.co/{args.push_to_hub}")
+            except Exception as e:
+                print(f"  ! Hub upload failed ({type(e).__name__}: {e}) — results at {out}")
     if history:
         first, last = history[0], history[-1]
         print(f"\nreward {first['reward']:.3f} -> {last['reward']:.3f} | "

@@ -117,6 +117,52 @@ def initial_prompt(question: Question) -> str:
     return f"Question: {question.question}\n"
 
 
+def run_episodes(questions: list[Question], index: BM25, batch_generate, *,
+                 max_searches: int = 2, k: int = 3) -> list[Episode]:
+    """Play many episodes in lockstep, one batched generation call per turn.
+
+    Rollouts are the wall-clock cost of GRPO, and generating them one at a time
+    wastes the GPU: measured shapes here put an unbatched 100-step run at ~8
+    hours against roughly one with batching. Episodes finish at different turns,
+    so each round only sends the ones still running.
+
+    `batch_generate(list[str]) -> list[str]`.
+    """
+    episodes = [Episode(question=q) for q in questions]
+    bodies = [initial_prompt(q) for q in questions]
+    active = list(range(len(questions)))
+
+    for _ in range(max_searches + 1):
+        if not active:
+            break
+        chunks = batch_generate([bodies[i] for i in active])
+        still: list[int] = []
+        for i, chunk in zip(active, chunks, strict=True):
+            ep = episodes[i]
+            start = len(bodies[i])
+            bodies[i] += chunk
+            ep.generated_spans.append((start, len(bodies[i])))
+            step = parse_action(chunk)
+            ep.steps.append(step)
+
+            if step.kind == "answer":
+                ep.answer = step.content
+                continue
+            if step.kind == "invalid" or ep.n_searches > max_searches:
+                continue
+
+            rendered, titles = format_results(index, step.content, k)
+            step.results = titles
+            ep.retrieved_titles.extend(titles)
+            bodies[i] += "\n" + rendered + "\n"
+            still.append(i)
+        active = still
+
+    for ep, body in zip(episodes, bodies, strict=True):
+        ep.transcript = body
+    return episodes
+
+
 def run_episode(question: Question, index: BM25, generate, *,
                 max_searches: int = 2, k: int = 3) -> Episode:
     """Play one episode.

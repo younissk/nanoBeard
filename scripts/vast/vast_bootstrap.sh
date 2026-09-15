@@ -142,7 +142,7 @@ tmux kill-session -t "$SESSION" 2>/dev/null || true
 # launch -> onstart -> bootstrap -> tmux. Four layers of quoting is how these
 # break, and the failure shows up as a box that bills while doing nothing.
 RUNNER="$REPO_DIR/.vast_run.sh"
-mkdir -p "$(dirname "$LORA_OUT")" "runs/$CONFIG"
+mkdir -p "$(dirname "$LORA_OUT")" "$(dirname "$RL_OUT")" "runs/$CONFIG"
 {
     echo '#!/usr/bin/env bash'
     echo "cd $REPO_DIR"

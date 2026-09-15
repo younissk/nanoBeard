@@ -1,4 +1,4 @@
-.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill lora lora-merge rl-corpus rl-train \
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill lora lora-merge rl-corpus rl-preflight rl-train \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
         vast-offers vast-launch vast-watch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
@@ -36,6 +36,7 @@ help:
 	@echo "  make autobatch              Measure tok/s vs micro-batch on this GPU"
 	@echo "  make distill DISTILL_N=40   Generate pirate SFT data with the Kimi teacher"
 	@echo "  make rl-corpus              Build the HotpotQA search index"
+	@echo "  make rl-preflight           Check everything before renting a GPU"
 	@echo "  make rl-train               GRPO on search (answer exact-match reward)"
 	@echo "  make lora                   LoRA fine-tune Qwen3-0.6B on that data"
 	@echo "  make lora-merge GGUF=1      Merge adapter -> HF -> GGUF"
@@ -202,6 +203,10 @@ RL_GROUP ?= 8
 # One-off: build the searchable corpus and print the retrieval baseline to beat.
 rl-corpus:
 	$(UV) run python -m nanobeard.rl.corpus --max-questions $(or $(RL_QUESTIONS),2000)
+
+# Thirty seconds locally beats discovering it on a rented GPU.
+rl-preflight:
+	$(UV) run --group finetune python -m nanobeard.rl.preflight
 
 rl-train:
 	$(UV) run --group finetune python -m nanobeard.rl.grpo \
