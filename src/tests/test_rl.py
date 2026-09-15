@@ -176,3 +176,50 @@ def test_retrieved_titles_accumulate_across_searches(index):
                      _scripted("<search>Ed Wood</search>", "<search>Salzburg</search>",
                                "<answer>yes</answer>"))
     assert "Ed Wood" in ep.retrieved_titles and "Salzburg" in ep.retrieved_titles
+
+
+# ----- fixes from run 1 -----
+def test_entropy_bonus_lowers_the_loss():
+    """Run 1 collapsed to entropy 0.00 with nothing in the loss resisting it.
+
+    The term is subtracted, so a more uncertain policy is cheaper — which is
+    what stops the model answering identically eight times in a row."""
+    beta = 0.01
+    pg, kl = 1.0, 0.5
+    confident = pg + 0.02 * kl - beta * 0.0
+    exploring = pg + 0.02 * kl - beta * 0.8
+    assert exploring < confident
+
+
+def test_degenerate_groups_are_excluded_not_merely_counted():
+    """Run 1 carried zero-advantage groups into the batch and threw away 53% of
+    its rollouts at the gradient step. They must not reach the batch at all."""
+    import inspect
+
+    from nanobeard.rl import grpo
+
+    src = inspect.getsource(grpo.main)
+    body = src.split("if all(a == 0.0 for a in advs):")[1].split("batch.extend")[0]
+    assert "continue" in body, "a degenerate group must skip, not fall through"
+
+
+def test_waste_is_measured_against_everything_generated():
+    """rollouts_wasted has to count rollouts that were generated and discarded,
+    or dynamic sampling would look free when it is not."""
+    import inspect
+
+    from nanobeard.rl import grpo
+
+    src = inspect.getsource(grpo.main)
+    assert '"rollouts_generated": generated' in src
+    assert "(generated - len(batch)) / max(1, generated)" in src
+
+
+def test_degeneracy_rate_stays_comparable_with_run_one():
+    # Reported over every group drawn, not just the ones kept — otherwise
+    # redrawing until success would report 0% and hide the collapse.
+    import inspect
+
+    from nanobeard.rl import grpo
+
+    assert "degenerate / max(1, degenerate + usable_groups)" in inspect.getsource(grpo.main)

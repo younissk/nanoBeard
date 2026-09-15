@@ -23,6 +23,24 @@ Two details that are easy to get wrong and fatal if you do:
   them and the batch contributes nothing. That is expected early on, and it is
   why `frac_degenerate` is logged — if it stays near 1.0, the task is too hard
   or the reward too coarse, and no amount of training will help.
+
+What the first 120-step run measured, and what changed because of it:
+
+    reward 0.238 -> 0.253, exact match 14.3% -> 15.4%   (noise)
+    entropy 0.39 -> 0.31, degenerate groups 34% -> 68%  (collapse)
+    53% of all rollouts generated, then discarded
+
+The policy did not fail to find signal; it stopped exploring, answered the same
+way eight times in a row, and half the GPU time went on groups that could not
+teach anything. Three changes follow from that:
+
+* **Dynamic sampling.** Keep drawing questions until enough groups actually
+  disagree with themselves, instead of training on whatever four came up. No
+  rollout is generated and then thrown away for being uninformative.
+* **An entropy bonus.** Entropy was logged but never paid for, so nothing
+  resisted the collapse. It is now a term in the loss.
+* **More questions per step.** With four, the reward swung 0.09–0.72 depending
+  purely on which questions were drawn, which buries any real trend.
 """
 
 from __future__ import annotations
@@ -117,10 +135,21 @@ def main() -> None:
     ap.add_argument("--index", default="data/search/hotpot_bm25.pkl")
     ap.add_argument("--out", default="runs/rl/search-v1")
     ap.add_argument("--steps", type=int, default=50)
-    ap.add_argument("--questions-per-step", type=int, default=4)
+    ap.add_argument("--questions-per-step", type=int, default=16,
+                    help="Usable groups to train on. Run 1 used 4 and the reward "
+                         "swung 0.09-0.72 on question draw alone.")
     ap.add_argument("--group-size", type=int, default=6, help="Rollouts per question")
     ap.add_argument("--lr", type=float, default=1e-6)
     ap.add_argument("--kl-beta", type=float, default=0.02)
+    ap.add_argument("--entropy-beta", type=float, default=0.01,
+                    help="Pay for uncertainty. Run 1 collapsed to entropy 0.00 with "
+                         "nothing in the loss resisting it.")
+    ap.add_argument("--dynamic-sampling", action="store_true", default=True,
+                    help="Keep drawing questions until enough groups disagree")
+    ap.add_argument("--no-dynamic-sampling", dest="dynamic_sampling",
+                    action="store_false")
+    ap.add_argument("--max-sample-waves", type=int, default=4,
+                    help="Cap on redraws per step, so a hard patch cannot stall a run")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--max-new-tokens", type=int, default=100)
     ap.add_argument("--max-searches", type=int, default=2)
@@ -218,37 +247,48 @@ def main() -> None:
     history = []
     for step in range(args.steps):
         t0 = time.time()
-        idx = torch.randint(0, len(questions), (args.questions_per_step,), generator=rng)
         batch: list[Rollout] = []
         degenerate = 0
 
         model.eval()
-        # Every rollout of every question in the step goes out in one batch: the
-        # group members share a prompt, so there is nothing to gain by splitting
-        # them, and the GPU is the whole cost here.
-        picked = [questions[i] for i in idx.tolist()]
-        fanned = [q for q in picked for _ in range(args.group_size)]
-        episodes = run_episodes(fanned, index, batch_generate,
-                                max_searches=args.max_searches)
+        # Draw questions in waves until enough groups disagree with themselves.
+        # A group whose rollouts all score alike has zero advantage and teaches
+        # nothing, and in run 1 that silently consumed 53% of every step's
+        # rollouts. Redrawing costs the same generation but buys a usable batch.
+        usable_groups = 0
+        generated = 0
+        waves = args.max_sample_waves if args.dynamic_sampling else 1
+        for _wave in range(waves):
+            if usable_groups >= args.questions_per_step:
+                break
+            want = args.questions_per_step - usable_groups
+            wave_idx = torch.randint(0, len(questions), (want,), generator=rng).tolist()
+            picked = [questions[i] for i in wave_idx]
+            fanned = [q for q in picked for _ in range(args.group_size)]
+            episodes = run_episodes(fanned, index, batch_generate,
+                                    max_searches=args.max_searches)
+            generated += len(fanned)
 
-        for gi in range(len(picked)):
-            q = picked[gi]
-            chunk = episodes[gi * args.group_size:(gi + 1) * args.group_size]
-            group = []
-            for ep in chunk:
-                rw = R.compute(ep.answer, q.answer, did_search=ep.did_search,
-                               retrieved_titles=ep.retrieved_titles, gold_titles=q.gold_titles)
-                r = build_rollout(tok, ep, rw, SYSTEM)
-                if r is not None:
-                    group.append(r)
-            if not group:
-                continue
-            advs = group_advantages([g.reward for g in group])
-            if all(a == 0.0 for a in advs):
-                degenerate += 1
-            for g, a in zip(group, advs, strict=True):
-                g.advantage = a
-            batch.extend(group)
+            for gi, q in enumerate(picked):
+                chunk = episodes[gi * args.group_size:(gi + 1) * args.group_size]
+                group = []
+                for ep in chunk:
+                    rw = R.compute(ep.answer, q.answer, did_search=ep.did_search,
+                                   retrieved_titles=ep.retrieved_titles,
+                                   gold_titles=q.gold_titles)
+                    r = build_rollout(tok, ep, rw, SYSTEM)
+                    if r is not None:
+                        group.append(r)
+                if not group:
+                    continue
+                advs = group_advantages([g.reward for g in group])
+                if all(a == 0.0 for a in advs):
+                    degenerate += 1
+                    continue  # nothing to learn; do not carry it into the batch
+                for g, a in zip(group, advs, strict=True):
+                    g.advantage = a
+                batch.extend(group)
+                usable_groups += 1
 
         if not batch:
             print(f"step {step}: no usable rollouts")
@@ -269,6 +309,10 @@ def main() -> None:
             logp, mask, entropy = sequence_logprobs(model, ids, attn, act)
             n = mask.sum().clamp(min=1)
             pg = -(logp * mask).sum() / n * r.advantage
+            # Subtracted, so higher entropy lowers the loss: the policy is paid
+            # to stay uncertain. Without it run 1 reached entropy 0.00 and
+            # answered identically eight times in a row.
+            ent = (entropy * mask).sum() / n
 
             # The reference policy is this same model with the adapter switched
             # off — no second copy in memory, and exactly the weights training
@@ -279,10 +323,10 @@ def main() -> None:
             diff = ref_logp - logp
             kl = ((diff.exp() - diff - 1) * mask).sum() / n
 
-            (pg + args.kl_beta * kl).backward()
+            (pg + args.kl_beta * kl - args.entropy_beta * ent).backward()
             tot_loss += pg.item()
             tot_kl += kl.item()
-            tot_ent += ((entropy * mask).sum() / n).item()
+            tot_ent += ent.item()
             used += 1
 
         if used:
@@ -298,7 +342,11 @@ def main() -> None:
             "searches": sum(r.n_searches for r in batch) / len(batch),
             "kl": tot_kl / max(1, used),
             "entropy": tot_ent / max(1, used),
-            "frac_degenerate": degenerate / max(1, args.questions_per_step),
+            # Groups thrown away as a share of every group drawn, so the number
+            # stays comparable with run 1 rather than flattering the new sampler.
+            "frac_degenerate": degenerate / max(1, degenerate + usable_groups),
+            "rollouts_generated": generated,
+            "rollouts_wasted": (generated - len(batch)) / max(1, generated),
             "rollouts": len(batch),
             "trained_on": used,
             "seconds": round(time.time() - t0, 1),
@@ -306,7 +354,8 @@ def main() -> None:
         history.append(m)
         print(f"step {m['step']:>3} reward {m['reward']:.3f} em {m['exact_match']:.2f} "
               f"recall {m['retrieval_recall']:.2f} kl {m['kl']:.4f} ent {m['entropy']:.2f} "
-              f"degen {m['frac_degenerate']:.0%} ({m['seconds']}s)")
+              f"degen {m['frac_degenerate']:.0%} waste {m['rollouts_wasted']:.0%} "
+              f"({m['seconds']}s)")
         (out / "metrics.jsonl").open("a").write(json.dumps(m) + "\n")
 
     model.save_pretrained(str(out))

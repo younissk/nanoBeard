@@ -197,8 +197,12 @@ distill:
 
 RL_INDEX ?= data/search/hotpot_bm25.pkl
 RL_OUT ?= runs/rl/search-v1
-RL_STEPS ?= 50
+RL_STEPS ?= 120
 RL_GROUP ?= 8
+# Run 1 used 4 questions/step and the reward swung 0.09-0.72 on question draw
+# alone, which buries any trend. Dynamic sampling redraws until this many groups
+# actually disagree with themselves.
+RL_QPS ?= 16
 
 # One-off: build the searchable corpus and print the retrieval baseline to beat.
 rl-corpus:
@@ -211,6 +215,7 @@ rl-preflight:
 rl-train:
 	$(UV) run --group finetune python -m nanobeard.rl.grpo \
 		--index $(RL_INDEX) --out $(RL_OUT) --steps $(RL_STEPS) --group-size $(RL_GROUP) \
+		--questions-per-step $(RL_QPS) \
 		$(if $(RL_ADAPTER),--adapter $(RL_ADAPTER),) $(if $(DEVICE),--device $(DEVICE),)
 
 # ----- LoRA fine-tune -----
