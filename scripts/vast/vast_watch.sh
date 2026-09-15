@@ -15,6 +15,10 @@
 #   * this script is killed             -> trap fires, destroy
 #
 # `destroy`, never `stop`: a stopped Vast instance still bills for its disk.
+#
+# To hand an instance over to a different watchdog, `kill -9` this one: a plain
+# kill runs the EXIT trap and destroys the box, which is correct for Ctrl-C and
+# wrong when you only meant to change the timeout.
 
 set -uo pipefail
 
