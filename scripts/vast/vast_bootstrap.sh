@@ -33,6 +33,15 @@ LORA_PUSH_REPO="${LORA_PUSH_REPO:-}"
 # e.g. "--cap chat=400 --cap math=300 --cap tool_none=100". Balances the
 # supervised-token budget, which example counts misrepresent.
 LORA_CAPS="${LORA_CAPS:-}"
+# VARIANT=rl only.
+RL_OUT="${RL_OUT:-runs/rl/search-v1}"
+RL_STEPS="${RL_STEPS:-150}"
+RL_GROUP="${RL_GROUP:-8}"
+RL_QPS="${RL_QPS:-4}"
+RL_MAX_TOKENS="${RL_MAX_TOKENS:-160}"
+RL_QUESTIONS="${RL_QUESTIONS:-4000}"
+RL_ADAPTER="${RL_ADAPTER:-}"
+RL_PUSH_REPO="${RL_PUSH_REPO:-}"
 # Watchdog contract: this file appears exactly once, containing the exit status.
 DONE_MARKER="${DONE_MARKER:-$REPO_DIR/.vast_done}"
 
@@ -84,9 +93,9 @@ log "on $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 # different torch build than the locally-tested 3.12 environment.
 log "uv sync (python 3.12)"
 uv python install 3.12
-if [ "$VARIANT" = "lora" ]; then
-    # The LoRA path needs transformers/peft/trl, which are deliberately not in
-    # the default install (see pyproject: they only exist for fine-tuning).
+if [ "$VARIANT" = "lora" ] || [ "$VARIANT" = "rl" ]; then
+    # Both fine-tuning paths need transformers/peft, deliberately absent from
+    # the default install (see pyproject).
     uv sync --no-dev --group finetune --python 3.12
 else
     uv sync --no-dev --python 3.12
@@ -95,7 +104,12 @@ fi
 # 5. Pull dataset from HF Hub (instead of running the full pipeline).
 # The LoRA trains on teacher-generated JSONL, which is committed to the repo and
 # therefore already on disk after the clone — nothing to download.
-if [ "$VARIANT" = "lora" ]; then
+if [ "$VARIANT" = "rl" ]; then
+    # 19k paragraphs of pickle, rebuilt from HotpotQA in under a minute, so it
+    # is gitignored and built here rather than shipped.
+    log "VARIANT=rl: building the search index ($RL_QUESTIONS questions)"
+    uv run python -m nanobeard.rl.corpus --max-questions "$RL_QUESTIONS"
+elif [ "$VARIANT" = "lora" ]; then
     log "VARIANT=lora: training data is in the repo at $LORA_DATA"
     # LORA_DATA may name several files; test each rather than the whole string.
     for f in $LORA_DATA; do
@@ -130,6 +144,7 @@ SESSION="nanobeard-$CONFIG"
 case "$VARIANT" in
     sft)  ENTRY="nanobeard.sft" ;;
     lora) ENTRY="nanobeard.finetune.train" ;;
+    rl)   ENTRY="nanobeard.rl.grpo" ;;
     *)    ENTRY="nanobeard.train" ;;
 esac
 log "Starting $ENTRY in tmux session: $SESSION"
@@ -147,7 +162,13 @@ mkdir -p "$(dirname "$LORA_OUT")" "$(dirname "$RL_OUT")" "runs/$CONFIG"
     echo '#!/usr/bin/env bash'
     echo "cd $REPO_DIR"
     echo 'set -o pipefail'
-    if [ "$VARIANT" = "lora" ]; then
+    if [ "$VARIANT" = "rl" ]; then
+        echo "uv run --group finetune python -m $ENTRY \\"
+        echo "    --out $RL_OUT --steps $RL_STEPS --group-size $RL_GROUP \\"
+        echo "    --questions-per-step $RL_QPS --max-new-tokens $RL_MAX_TOKENS \\"
+        echo "    ${RL_ADAPTER:+--adapter $RL_ADAPTER} \\"
+        echo "    ${RL_PUSH_REPO:+--push-to-hub $RL_PUSH_REPO} 2>&1 | tee $RL_OUT.log"
+    elif [ "$VARIANT" = "lora" ]; then
         echo "uv run --group finetune python -m $ENTRY \\"
         echo "    --data $LORA_DATA --out $LORA_OUT \\"
         echo "    ${LORA_CAPS} \\"
