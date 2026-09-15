@@ -1,4 +1,4 @@
-.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill lora lora-merge \
+.PHONY: help install env source prepare dataset train train-gpu sft sample chat fertility autobatch evals evals-diff distill lora lora-merge rl-corpus rl-train \
         publish publish-space export-gguf publish-gguf push-data serve rejection view judge judge-all analyze selfplay \
         vast-offers vast-launch vast-watch vast-ssh vast-logs vast-destroy \
         test test-all test-fast test-slow lint format typecheck clean clean-data clean-ckpt
@@ -35,6 +35,8 @@ help:
 	@echo "  make fertility              Tokens/char by domain (REFERENCE=Qwen/Qwen3-0.6B)"
 	@echo "  make autobatch              Measure tok/s vs micro-batch on this GPU"
 	@echo "  make distill DISTILL_N=40   Generate pirate SFT data with the Kimi teacher"
+	@echo "  make rl-corpus              Build the HotpotQA search index"
+	@echo "  make rl-train               GRPO on search (answer exact-match reward)"
 	@echo "  make lora                   LoRA fine-tune Qwen3-0.6B on that data"
 	@echo "  make lora-merge GGUF=1      Merge adapter -> HF -> GGUF"
 	@echo "  make vast-watch             Wait for the run, fetch results, destroy the box"
@@ -186,6 +188,25 @@ DISTILL_OUT ?= runs/distill/sample.jsonl
 distill:
 	$(UV) run python -m nanobeard.distill.generate --out $(DISTILL_OUT) --n $(DISTILL_N) \
 		$(if $(THINKING),--thinking,)
+
+# ----- RL with verifiable rewards (search) -----
+# The reward is answer exact-match, which cannot be faked. Retrieval precision
+# and recall are logged as diagnostics only — a query of "the" retrieves
+# everything and would score perfect recall.
+
+RL_INDEX ?= data/search/hotpot_bm25.pkl
+RL_OUT ?= runs/rl/search-v1
+RL_STEPS ?= 50
+RL_GROUP ?= 8
+
+# One-off: build the searchable corpus and print the retrieval baseline to beat.
+rl-corpus:
+	$(UV) run python -m nanobeard.rl.corpus --max-questions $(or $(RL_QUESTIONS),2000)
+
+rl-train:
+	$(UV) run --group finetune python -m nanobeard.rl.grpo \
+		--index $(RL_INDEX) --out $(RL_OUT) --steps $(RL_STEPS) --group-size $(RL_GROUP) \
+		$(if $(RL_ADAPTER),--adapter $(RL_ADAPTER),) $(if $(DEVICE),--device $(DEVICE),)
 
 # ----- LoRA fine-tune -----
 # Needs the finetune dependency group: `uv sync --group finetune`.

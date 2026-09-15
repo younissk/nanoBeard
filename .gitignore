@@ -27,12 +27,14 @@ runs/rejection/*
 runs/selfplay/*
 runs/distill/*
 runs/evals/*
+runs/rl/*
 !runs/rejection/*.jsonl
 !runs/rejection/*.json
 !runs/rejection/*.html
 !runs/selfplay/*.jsonl
 !runs/distill/*.jsonl
 !runs/evals/*.json
+!runs/rl/*.jsonl
 # Teacher-generated SFT data: small, and the thing the fine-tune is trained on,
 # so it wants to be reviewable in a diff alongside the eval reports.
 !runs/distill/
@@ -75,3 +77,6 @@ hf_release/
 
 # GGUF/ONNX export artifacts + downloaded models (uploaded to HF, not source)
 export/
+
+# Rebuildable from HotpotQA in under a minute; 19k paragraphs of pickle.
+data/search/
