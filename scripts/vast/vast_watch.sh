@@ -86,8 +86,15 @@ resolve_ssh() {
 }
 
 DEADLINE=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
-if pgrep -f "vast_watch.sh $INSTANCE" | grep -qv "^$$\$"; then
-    others=$(pgrep -f "vast_watch.sh $INSTANCE" | grep -v "^$$\$" | tr '\n' ' ')
+# Only a *running watchdog* counts, not the launcher that is starting this one:
+# detach.py's own command line contains "vast_watch.sh <id>", and matching it
+# made the guard refuse every legitimate start, leaving the instance unguarded.
+others=$(pgrep -f "vast_watch\.sh $INSTANCE( |$)" 2>/dev/null \
+         | grep -v "^$$\$" \
+         | while read -r pid; do
+               ps -o command= -p "$pid" 2>/dev/null | grep -q "detach\.py" || echo "$pid"
+           done | tr '\n' ' ')
+if [ -n "${others// /}" ]; then
     log "another watchdog is already on $INSTANCE (pid $others) — refusing to double up"
     trap - EXIT INT TERM
     exit 1
