@@ -1,0 +1,12 @@
+{
+  "n": 150,
+  "exact_match": 0.12666666666666668,
+  "token_f1": 0.19661939268461007,
+  "gave_answer": 1.0,
+  "searched": 0.5533333333333333,
+  "retrieval_recall": 0.29333333333333333,
+  "searches_per_episode": 0.5533333333333333,
+  "label": "search-only-t1",
+  "model": "runs/lora/search-v3-merged/search-v3-merged.Q4_K_M.gguf",
+  "skip": 1500
+}

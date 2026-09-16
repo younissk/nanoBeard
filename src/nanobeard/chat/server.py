@@ -49,7 +49,7 @@ import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from nanobeard.rejection.generate import STOPS, render_prompt
 
@@ -275,6 +275,7 @@ class ChatHandler(BaseHTTPRequestHandler):
     gguf_root: Path = DEFAULT_GGUF_ROOT
     api: str = "chat"
     default_system: str = ""
+    search_index: object | None = None   # BM25 over Wikipedia paragraphs, or None
 
     def log_message(self, fmt, *args):  # noqa: A002 - stdlib signature
         pass  # The UI is the log; per-request noise buries the real errors.
@@ -315,6 +316,7 @@ class ChatHandler(BaseHTTPRequestHandler):
                 "attached": self.attached,
                 "api": self.api,
                 "system": self.default_system,
+                "search": self.search_index is not None,
             })
         else:
             self._json({"error": "not found"}, 404)
@@ -343,6 +345,78 @@ class ChatHandler(BaseHTTPRequestHandler):
             return
         self._json({"current": path})
 
+    def _chat_search(self, req: dict) -> None:
+        """Play a full search episode, streaming each stage as it happens.
+
+        The model only writes queries and answers; this loop runs the searches
+        and pastes the results back, exactly as the RL environment does — same
+        index, same protocol, same stop strings — so what you see here is what
+        the policy was trained against.
+        """
+        from nanobeard.rl.corpus import BM25
+        from nanobeard.rl.env import STOP_STRINGS, format_results, parse_action
+        from nanobeard.rl.env import SYSTEM as SEARCH_SYSTEM
+
+        turns = req.get("turns") or []
+        question = (turns[-1].get("text") or "").strip()
+        body = f"Question: {question}\n"
+        max_searches = int(req.get("max_searches", 3))
+        backend = self.backend
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        try:
+            for _ in range(max_searches + 1):
+                payload = {
+                    "messages": [{"role": "system", "content": SEARCH_SYSTEM},
+                                 {"role": "user", "content": body}],
+                    "max_tokens": int(req.get("max_tokens", 160)),
+                    "temperature": float(req.get("temperature", 0.7)),
+                    "stop": list(STOP_STRINGS),
+                    "chat_template_kwargs": {"enable_thinking": bool(req.get("thinking"))},
+                }
+                r = urllib.request.Request(
+                    f"{backend}/v1/chat/completions", data=json.dumps(payload).encode(),
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(r, timeout=180) as resp:
+                    d = json.load(resp)
+                chunk = d["choices"][0]["message"].get("content") or ""
+                # llama-server eats the stop string; restore it so the same
+                # parser the environment uses still sees a closed tag.
+                if d["choices"][0].get("finish_reason") == "stop":
+                    for st in STOP_STRINGS:
+                        tag = st[2:-1]
+                        if f"<{tag}>" in chunk and st not in chunk:
+                            chunk += st
+                body += chunk
+                step = parse_action(chunk)
+
+                if step.kind == "search":
+                    # Typed `object` on the handler so the chat server does not
+                    # import the RL package unless the tool is switched on.
+                    rendered, titles = format_results(
+                        cast(BM25, self.search_index), step.content, 3)
+                    body += "\n" + rendered + "\n"
+                    self._send_event({"search": step.content, "results": titles})
+                    continue
+                if step.kind == "answer":
+                    self._send_event({"final_answer": step.content})
+                    self._send_event({"done": True, "reason": "answer"})
+                    return
+                # Prose instead of an action ends the episode — that failure is
+                # the thing worth seeing.
+                self._send_event({"invalid": chunk.strip()[:400]})
+                self._send_event({"done": True, "reason": "no-action"})
+                return
+            self._send_event({"done": True, "reason": "out of searches"})
+        except BrokenPipeError:
+            return
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            self._send_event({"error": f"{type(e).__name__}: {e}"})
+
     def _chat(self) -> None:
         req = self._read_json()
         turns = req.get("turns") or []
@@ -354,6 +428,10 @@ class ChatHandler(BaseHTTPRequestHandler):
             return
         if not self.attached and (self.llama is None or self.llama.model is None):
             self._json({"error": "no model loaded — pick one first"}, 409)
+            return
+
+        if self.search_index is not None and req.get("search"):
+            self._chat_search(req)
             return
 
         backend = self.backend
@@ -443,6 +521,7 @@ def serve(
     open_browser: bool = True,
     api: str = "chat",
     system: str = PIRATE_SYSTEM,
+    search_index: object | None = None,
 ) -> None:
     llama = None if attach else LlamaServer(port=llama_port, ctx=ctx)
 
@@ -467,6 +546,7 @@ def serve(
     ChatHandler.gguf_root = gguf_root
     ChatHandler.api = api
     ChatHandler.default_system = system
+    ChatHandler.search_index = search_index
 
     httpd = ThreadingHTTPServer(("127.0.0.1", ui_port), ChatHandler)
 
@@ -506,7 +586,18 @@ def main() -> None:
                          "(Qwen3 line); completion = raw SFT transcript (frigate line)")
     ap.add_argument("--system", default=PIRATE_SYSTEM,
                     help="Default system prompt, editable in the UI")
+    ap.add_argument("--search-index", default=None, metavar="PKL",
+                    help="Enable the Wikipedia search tool, e.g. "
+                         "data/search/hotpot_bm25.pkl (build with make rl-corpus)")
     args = ap.parse_args()
+
+    search_index = None
+    if args.search_index:
+        from nanobeard.rl.corpus import load as load_corpus
+
+        search_index, _q = load_corpus(Path(args.search_index))
+        print(f"search tool: {len(search_index):,} Wikipedia paragraphs")
+
     serve(
         ui_port=args.port,
         llama_port=args.llama_port,
@@ -517,6 +608,7 @@ def main() -> None:
         open_browser=not args.no_open,
         api=args.api,
         system=args.system,
+        search_index=search_index,
     )
 
 

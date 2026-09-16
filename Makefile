@@ -291,8 +291,12 @@ CHAT_GGUF_ROOT ?= export/gguf
 # which is what carries Qwen3's tool-call and think blocks.
 CHAT_API ?= chat
 
+# SEARCH=1 turns on the Wikipedia search tool (needs `make rl-corpus` first).
+CHAT_SEARCH_INDEX ?= data/search/hotpot_bm25.pkl
+
 chat:
 	$(UV) run python -m nanobeard.chat.server \
+		$(if $(SEARCH),--search-index $(CHAT_SEARCH_INDEX),) \
 		--port $(CHAT_PORT) --llama-port $(CHAT_LLAMA_PORT) \
 		--gguf-root $(CHAT_GGUF_ROOT) --api $(CHAT_API) \
 		$(if $(GGUF_MODEL_PICK),--model $(GGUF_MODEL_PICK),) \

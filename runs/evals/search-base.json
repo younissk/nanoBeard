@@ -1,0 +1,12 @@
+{
+  "n": 150,
+  "exact_match": 0.13333333333333333,
+  "token_f1": 0.19695728889846537,
+  "gave_answer": 0.9933333333333333,
+  "searched": 0.76,
+  "retrieval_recall": 0.39,
+  "searches_per_episode": 0.7666666666666667,
+  "label": "base",
+  "model": "export/gguf/qwen3-0.6b/Qwen3-0.6B-Q4_K_M.gguf",
+  "skip": 1500
+}

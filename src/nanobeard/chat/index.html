@@ -70,6 +70,13 @@
     white-space: pre-wrap; word-break: break-word;
   }
   .toolcall .fn { color: var(--gold-light); }
+  .searchstep {
+    border-left: 3px solid var(--gold); padding: 6px 0 6px 10px; margin: 6px 0;
+    font-size: 13px;
+  }
+  .searchstep .q { color: var(--gold-light); font-family: ui-monospace, Menlo, monospace; }
+  .searchstep .hits { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .invalid { color: #e07a5f; font-style: italic; white-space: pre-wrap; }
   .toolresult { display: flex; gap: 6px; margin-top: 6px; }
   .toolresult input {
     flex: 1; font: inherit; font-size: 12.5px; font-family: ui-monospace, Menlo, monospace;
@@ -100,6 +107,7 @@
   <label>max <input type="number" id="max_tokens" value="200" step="10" min="16"></label>
   <label><input type="checkbox" id="thinking"> think</label>
   <label><input type="checkbox" id="usetools"> tools</label>
+  <label id="searchwrap" hidden><input type="checkbox" id="usesearch"> wiki search</label>
   <button id="sysbtn" type="button">System…</button>
   <button id="toolbtn" type="button">Tools…</button>
   <button id="clear" type="button">Clear</button>
@@ -144,6 +152,8 @@ function opts() {
     system: $("system").value,
     thinking: $("thinking").checked,
     tools: toolSchemas(),
+    search: $("usesearch").checked,
+    max_searches: 3,
   };
 }
 
@@ -198,6 +208,21 @@ function render() {
       tt.textContent = t.thinking;
       th.appendChild(tt);
       body.appendChild(th);
+    }
+
+    (t.searches || []).forEach((s) => {
+      const card = document.createElement("div");
+      card.className = "searchstep";
+      card.innerHTML = `<span class="q">&#128269; ${s.query}</span>`
+        + `<div class="hits">${(s.results || []).join(" &middot; ") || "no matches"}</div>`;
+      body.appendChild(card);
+    });
+
+    if (t.invalid) {
+      const d2 = document.createElement("div");
+      d2.className = "invalid";
+      d2.textContent = "no <answer> tag — it wrote prose instead:\n" + t.invalid;
+      body.appendChild(d2);
     }
 
     (t.tool_calls || []).forEach((tc) => {
@@ -271,6 +296,8 @@ async function loadModels() {
     return;
   }
   if (typeof d.system === "string" && !$("system").value) $("system").value = d.system;
+  // The search tool needs an index loaded server-side, so only offer it if there is one.
+  if (d.search) $("searchwrap").hidden = false;
   if (!$("tools").value) $("tools").value = JSON.stringify(DEFAULT_TOOLS, null, 2);
   for (const m of d.models) {
     const o = document.createElement("option");
@@ -378,6 +405,22 @@ async function stream() {
       const cur = turns[turns.length - 1];
       if (ev.thinking) {
         cur.thinking = (cur.thinking || "") + ev.thinking;
+        node = render();
+        continue;
+      }
+      if (ev.search) {
+        cur.searches = cur.searches || [];
+        cur.searches.push({ query: ev.search, results: ev.results || [] });
+        node = render();
+        continue;
+      }
+      if (ev.final_answer) {
+        cur.text = ev.final_answer;
+        node = render();
+        continue;
+      }
+      if (ev.invalid) {
+        cur.invalid = ev.invalid;
         node = render();
         continue;
       }
