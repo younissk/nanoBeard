@@ -346,7 +346,12 @@ def main() -> None:
             # stays comparable with run 1 rather than flattering the new sampler.
             "frac_degenerate": degenerate / max(1, degenerate + usable_groups),
             "rollouts_generated": generated,
-            "rollouts_wasted": (generated - len(batch)) / max(1, generated),
+            # Groups kept against the target. This is what dynamic sampling buys:
+            # not less waste — a group must be generated to discover it is
+            # degenerate — but a full batch instead of a half-empty one. Run 1
+            # trained on 14.9 rollouts a step; run 2 on 91.4.
+            "usable_groups": usable_groups,
+            "target_groups": args.questions_per_step,
             "rollouts": len(batch),
             "trained_on": used,
             "seconds": round(time.time() - t0, 1),
@@ -354,8 +359,8 @@ def main() -> None:
         history.append(m)
         print(f"step {m['step']:>3} reward {m['reward']:.3f} em {m['exact_match']:.2f} "
               f"recall {m['retrieval_recall']:.2f} kl {m['kl']:.4f} ent {m['entropy']:.2f} "
-              f"degen {m['frac_degenerate']:.0%} waste {m['rollouts_wasted']:.0%} "
-              f"({m['seconds']}s)")
+              f"degen {m['frac_degenerate']:.0%} "
+              f"grp {m['usable_groups']}/{m['target_groups']} ({m['seconds']}s)")
         (out / "metrics.jsonl").open("a").write(json.dumps(m) + "\n")
 
     model.save_pretrained(str(out))

@@ -203,16 +203,20 @@ def test_degenerate_groups_are_excluded_not_merely_counted():
     assert "continue" in body, "a degenerate group must skip, not fall through"
 
 
-def test_waste_is_measured_against_everything_generated():
-    """rollouts_wasted has to count rollouts that were generated and discarded,
-    or dynamic sampling would look free when it is not."""
+def test_batch_fullness_is_reported_not_just_waste():
+    """Dynamic sampling cannot reduce waste — a group must be generated to
+    discover it is degenerate. What it buys is a FULL batch: run 1 trained on
+    14.9 rollouts per step, run 2 on 91.4. So the metric that matters is groups
+    kept against the target, not a waste ratio that is identical to
+    frac_degenerate by construction."""
     import inspect
 
     from nanobeard.rl import grpo
 
     src = inspect.getsource(grpo.main)
     assert '"rollouts_generated": generated' in src
-    assert "(generated - len(batch)) / max(1, generated)" in src
+    assert '"usable_groups": usable_groups' in src
+    assert '"target_groups": args.questions_per_step' in src
 
 
 def test_degeneracy_rate_stays_comparable_with_run_one():
