@@ -207,6 +207,24 @@ shipping a system prompt.
       hand on 2026-09-10: switching leaves exactly one process, SIGTERM leaves
       none (it did leak before — plain SIGTERM skipped the cleanup path).
 
+## Search RL — next steps
+
+- [ ] **Run both bases, in this order.** The current run trains a fresh LoRA on
+      plain `Qwen/Qwen3-0.6B`, deliberately: if search-RL fails on top of the
+      pirate LoRA you cannot tell whether the model cannot learn search or
+      whether the persona got in the way. Measured precedent for the worry — the
+      pirate system prompt took tool calling from 66.7% to 0%, and v4 only
+      recovered it to 33.3%. The `<search>`/`<answer>` protocol is tool use
+      wearing a different hat.
+      Once the base run shows search is learnable at 0.6B, repeat it against the
+      pirate model for a clean before/after on what the persona costs.
+- [ ] **The pirate version needs `--base`, not `--adapter`.** Two LoRAs on the
+      same base do not compose. Merge first (`make lora-merge`), then train the
+      search LoRA on `runs/lora/pirate-v4-merged`.
+- [ ] Decide the shipping order: search-then-pirate (re-apply the SFT on a merged
+      search model) or pirate-then-search. Nobody has measured which survives
+      better.
+
 ## Reasoning roadmap — teach Frigate to reason
 
 Ordered. Each step is a hard blocker for the next. Plan derived 2026-09-10 from
